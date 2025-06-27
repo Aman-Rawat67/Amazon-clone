@@ -174,21 +174,30 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         // Main cart content (left side)
         Expanded(
           flex: 3,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildCartHeader(cart),
-              Expanded(
-                child: ListView.builder(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCartHeader(cart),
+                // Cart items
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: cart.items.length,
                   itemBuilder: (context, index) {
                     return _buildCartItem(cart.items[index], cartNotifier);
                   },
                 ),
-              ),
-              _buildYourItems(),
-            ],
+                const SizedBox(height: 32),
+                // Your Items section
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildYourItems(),
+                ),
+                const SizedBox(height: 32),
+              ],
+            ),
           ),
         ),
         // Right sidebar
@@ -618,20 +627,20 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       },
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 0.75,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        return _buildYourItemCard(items[index]);
-      },
-    );
+         return GridView.builder(
+       shrinkWrap: true,
+       physics: const NeverScrollableScrollPhysics(),
+       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+         crossAxisCount: 4,
+         crossAxisSpacing: 12,
+         mainAxisSpacing: 12,
+         childAspectRatio: 0.85,
+       ),
+       itemCount: items.length,
+       itemBuilder: (context, index) {
+         return _buildYourItemCard(items[index]);
+       },
+     );
   }
 
   Widget _buildYourItemCard(Map<String, dynamic> item) {
@@ -644,29 +653,29 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Image
-          Expanded(
-            flex: 3,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Image.network(
-                  item['image'],
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => 
-                      Container(color: Colors.grey[200], child: const Icon(Icons.image)),
-                ),
-              ),
-            ),
-          ),
-          
-          // Content
-          Expanded(
-            flex: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
+                     // Image
+           Expanded(
+             flex: 2,
+             child: Container(
+               width: double.infinity,
+               padding: const EdgeInsets.all(8),
+               child: ClipRRect(
+                 borderRadius: BorderRadius.circular(4),
+                 child: Image.network(
+                   item['image'],
+                   fit: BoxFit.cover,
+                   errorBuilder: (context, error, stackTrace) => 
+                       Container(color: Colors.grey[200], child: const Icon(Icons.image)),
+                 ),
+               ),
+             ),
+           ),
+           
+           // Content
+           Expanded(
+             flex: 3,
+             child: Padding(
+               padding: const EdgeInsets.all(8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
