@@ -165,8 +165,15 @@ class CartModel {
   /// Calculate total number of items in cart
   int get totalItems => items.fold(0, (sum, item) => sum + item.quantity);
 
-  /// Calculate total price of all items in cart
-  double get totalPrice => items.fold(0.0, (sum, item) => sum + item.totalPrice);
+  /// Calculate total price of all items in cart (bulletproof calculation)
+  double get totalPrice {
+    if (items.isEmpty) return 0.0;
+    
+    return items.fold(0.0, (sum, item) {
+      final itemTotal = item.product.price * item.quantity;
+      return sum + itemTotal;
+    });
+  }
 
   /// Check if cart is empty
   bool get isEmpty => items.isEmpty;
@@ -180,11 +187,30 @@ class CartModel {
   /// Calculate subtotal (same as totalPrice for now)
   double get subtotal => totalPrice;
 
-  /// Calculate shipping fee
-  double get shipping => totalPrice > 100 ? 0.0 : 10.0;
+  /// Calculate shipping fee with proper threshold
+  double get shipping {
+    const double freeShippingThreshold = 100.0;
+    const double standardShippingCost = 10.0;
+    
+    return totalPrice >= freeShippingThreshold ? 0.0 : standardShippingCost;
+  }
 
-  /// Calculate total including shipping
-  double get total => subtotal + shipping;
+  /// Calculate total including shipping (robust calculation)
+  double get total {
+    final cartSubtotal = subtotal;
+    final shippingCost = shipping;
+    return cartSubtotal + shippingCost;
+  }
+
+  /// Get cart summary for debugging
+  Map<String, dynamic> get summary => {
+    'totalItems': totalItems,
+    'uniqueProducts': uniqueProductCount,
+    'subtotal': subtotal,
+    'shipping': shipping,
+    'total': total,
+    'isEmpty': isEmpty,
+  };
 
   @override
   String toString() {

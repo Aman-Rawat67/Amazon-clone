@@ -17,6 +17,7 @@ class AppConstants {
   static const String usersCollection = 'users';
   static const String productsCollection = 'products';
   static const String categoriesCollection = 'categories';
+  static const String productSectionsCollection = 'product_sections';
   static const String cartsCollection = 'carts';
   static const String ordersCollection = 'orders';
   static const String reviewsCollection = 'reviews';

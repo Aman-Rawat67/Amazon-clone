@@ -3,6 +3,10 @@ import '../models/product_model.dart';
 import '../models/cart_model.dart';
 import '../models/order_model.dart';
 import '../models/user_model.dart';
+import '../models/product_section_model.dart';
+import '../models/banner_model.dart';
+import '../models/category_model.dart';
+import '../models/deal_model.dart';
 import '../constants/app_constants.dart';
 
 /// Service class for handling Firestore database operations
@@ -15,7 +19,7 @@ class FirestoreService {
 
   // PRODUCT OPERATIONS
 
-  /// Add a new product
+  /// Add a new product and auto-assign to appropriate section
   Future<String> addProduct(ProductModel product) async {
     try {
       final docRef = await _firestore
@@ -25,9 +29,106 @@ class FirestoreService {
       // Update product with the generated ID
       await docRef.update({'id': docRef.id});
       
+      // Auto-assign to product section based on category
+      await _autoAssignProductToSection(docRef.id, product.category);
+      
       return docRef.id;
     } catch (e) {
       throw Exception('Failed to add product: ${e.toString()}');
+    }
+  }
+
+  /// Automatically assign product to appropriate section
+  Future<void> _autoAssignProductToSection(String productId, String category) async {
+    try {
+      // Find existing section for this category
+      final sectionsQuery = await _firestore
+          .collection(AppConstants.productSectionsCollection)
+          .where('category', isEqualTo: category)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (sectionsQuery.docs.isNotEmpty) {
+        // Add to existing section
+        final sectionDoc = sectionsQuery.docs.first;
+        final currentProductIds = List<String>.from(sectionDoc.data()['productIds'] ?? []);
+        
+        if (!currentProductIds.contains(productId)) {
+          currentProductIds.add(productId);
+          await sectionDoc.reference.update({
+            'productIds': currentProductIds,
+            'updatedAt': Timestamp.now(),
+          });
+        }
+      } else {
+        // Create new section for this category
+        await _createCategorySection(category, productId);
+      }
+    } catch (e) {
+      print('Warning: Could not auto-assign product to section: $e');
+      // Don't throw error - product creation should still succeed
+    }
+  }
+
+  /// Create a new product section for a category
+  Future<void> _createCategorySection(String category, String firstProductId) async {
+    try {
+      final sectionTitle = _generateSectionTitle(category);
+      
+      await _firestore
+          .collection(AppConstants.productSectionsCollection)
+          .add({
+        'title': sectionTitle,
+        'subtitle': 'Best deals on $category',
+        'category': category,
+        'productIds': [firstProductId],
+        'seeMoreText': 'See all offers',
+        'seeMoreRoute': '/category/$category',
+        'displayCount': 4,
+        'isActive': true,
+        'order': await _getNextSectionOrder(),
+        'createdAt': Timestamp.now(),
+      });
+    } catch (e) {
+      throw Exception('Failed to create category section: $e');
+    }
+  }
+
+  /// Generate section title based on category
+  String _generateSectionTitle(String category) {
+    switch (category.toLowerCase()) {
+      case 'electronics':
+        return 'Starting ₹999 | Electronics';
+      case 'fashion':
+        return 'Starting ₹299 | Fashion';
+      case 'home & kitchen':
+        return 'Starting ₹199 | Home & Kitchen';
+      case 'books':
+        return 'Starting ₹99 | Books';
+      case 'sports':
+        return 'Starting ₹499 | Sports';
+      default:
+        return 'Great deals on $category';
+    }
+  }
+
+  /// Get next section order number
+  Future<int> _getNextSectionOrder() async {
+    try {
+      final sectionsQuery = await _firestore
+          .collection(AppConstants.productSectionsCollection)
+          .orderBy('order', descending: true)
+          .limit(1)
+          .get();
+
+      if (sectionsQuery.docs.isNotEmpty) {
+        final lastOrder = sectionsQuery.docs.first.data()['order'] as int? ?? 0;
+        return lastOrder + 1;
+      }
+      return 0;
+    } catch (e) {
+      return 0;
     }
   }
 
@@ -84,17 +185,23 @@ class FirestoreService {
     try {
       Query query = _firestore.collection(AppConstants.productsCollection);
 
+      // Count number of filters applied
+      int filterCount = 0;
+      
       // Add filters
       if (category != null && category.isNotEmpty) {
         query = query.where('category', isEqualTo: category);
+        filterCount++;
       }
 
       if (isApproved != null) {
         query = query.where('isApproved', isEqualTo: isApproved);
+        filterCount++;
       }
 
       if (vendorId != null && vendorId.isNotEmpty) {
         query = query.where('vendorId', isEqualTo: vendorId);
+        filterCount++;
       }
 
       // Add search functionality (basic text search)
@@ -102,13 +209,19 @@ class FirestoreService {
         query = query
             .where('name', isGreaterThanOrEqualTo: searchQuery)
             .where('name', isLessThan: searchQuery + 'z');
+        filterCount++;
       }
 
-      // Order by creation date
-      query = query.orderBy('createdAt', descending: true);
+      // Only add orderBy if no filters are applied to avoid indexing issues
+      // For filtered queries, we'll sort on client side
+      bool shouldUseServerSideOrdering = filterCount == 0;
+      
+      if (shouldUseServerSideOrdering) {
+        query = query.orderBy('createdAt', descending: true);
+      }
 
-      // Add pagination
-      if (lastDocument != null) {
+      // Add pagination (only works with server-side ordering)
+      if (lastDocument != null && shouldUseServerSideOrdering) {
         query = query.startAfterDocument(lastDocument);
       }
 
@@ -116,9 +229,16 @@ class FirestoreService {
 
       final querySnapshot = await query.get();
 
-      return querySnapshot.docs
+      final products = querySnapshot.docs
           .map((doc) => ProductModel.fromJson(doc.data() as Map<String, dynamic>))
           .toList();
+
+      // Sort on client side if we couldn't use server-side ordering
+      if (!shouldUseServerSideOrdering) {
+        products.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      }
+
+      return products;
     } catch (e) {
       throw Exception('Failed to get products: ${e.toString()}');
     }
@@ -130,46 +250,27 @@ class FirestoreService {
       final querySnapshot = await _firestore
           .collection(AppConstants.productsCollection)
           .where('category', isEqualTo: category)
-          .where('isApproved', isEqualTo: true)
-          .where('isActive', isEqualTo: true)
-          .orderBy('createdAt', descending: true)
           .get();
 
-      return querySnapshot.docs
+      final products = querySnapshot.docs
           .map((doc) => ProductModel.fromJson(doc.data()))
+          .where((product) => product.isApproved && product.isActive) // Filter on client side
           .toList();
+
+      // Sort by creation date on client side (newest first)
+      products.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      return products;
     } catch (e) {
       throw Exception('Failed to get products by category: ${e.toString()}');
     }
   }
 
-  /// Search products
-  Future<List<ProductModel>> searchProducts(String searchQuery) async {
-    try {
-      final querySnapshot = await _firestore
-          .collection(AppConstants.productsCollection)
-          .where('isApproved', isEqualTo: true)
-          .where('isActive', isEqualTo: true)
-          .get();
 
-      // Filter results based on search query (client-side filtering)
-      final products = querySnapshot.docs
-          .map((doc) => ProductModel.fromJson(doc.data()))
-          .where((product) =>
-              product.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
-              product.description.toLowerCase().contains(searchQuery.toLowerCase()) ||
-              product.tags.any((tag) => tag.toLowerCase().contains(searchQuery.toLowerCase())))
-          .toList();
-
-      return products;
-    } catch (e) {
-      throw Exception('Failed to search products: ${e.toString()}');
-    }
-  }
 
   // CART OPERATIONS
 
-  /// Add item to cart
+  /// Add item to cart with improved duplicate handling
   Future<void> addToCart(String userId, CartItem item) async {
     try {
       final cartRef = _firestore
@@ -181,21 +282,29 @@ class FirestoreService {
       if (cartDoc.exists) {
         // Update existing cart
         final cart = CartModel.fromJson(cartDoc.data()!);
+        
+        // Create unique key for product (considering variants)
+        final itemKey = _createCartItemKey(item.productId, item.selectedColor, item.selectedSize);
+        
+        // Find existing item using the same key logic
         final existingItemIndex = cart.items.indexWhere(
-          (cartItem) => cartItem.productId == item.productId &&
-              cartItem.selectedColor == item.selectedColor &&
-              cartItem.selectedSize == item.selectedSize,
+          (cartItem) => _createCartItemKey(cartItem.productId, cartItem.selectedColor, cartItem.selectedSize) == itemKey,
         );
 
         List<CartItem> updatedItems = [...cart.items];
 
         if (existingItemIndex != -1) {
           // Update quantity of existing item
-          updatedItems[existingItemIndex] = updatedItems[existingItemIndex]
-              .copyWith(quantity: updatedItems[existingItemIndex].quantity + item.quantity);
+          final existingItem = updatedItems[existingItemIndex];
+          updatedItems[existingItemIndex] = existingItem.copyWith(
+            quantity: existingItem.quantity + item.quantity,
+            addedAt: DateTime.now(), // Update timestamp
+          );
         } else {
-          // Add new item
-          updatedItems.add(item);
+          // Add new item with unique ID
+          updatedItems.add(item.copyWith(
+            id: itemKey, // Use the same key logic for ID
+          ));
         }
 
         await cartRef.update({
@@ -204,10 +313,14 @@ class FirestoreService {
         });
       } else {
         // Create new cart
+        final newItem = item.copyWith(
+          id: _createCartItemKey(item.productId, item.selectedColor, item.selectedSize),
+        );
+        
         final cart = CartModel(
           id: userId,
           userId: userId,
-          items: [item],
+          items: [newItem],
           createdAt: DateTime.now(),
         );
 
@@ -216,6 +329,13 @@ class FirestoreService {
     } catch (e) {
       throw Exception('Failed to add item to cart: ${e.toString()}');
     }
+  }
+
+  /// Create unique key for cart item (prevents duplicates)
+  String _createCartItemKey(String productId, String? selectedColor, String? selectedSize) {
+    final colorKey = selectedColor ?? 'no-color';
+    final sizeKey = selectedSize ?? 'no-size';
+    return '${productId}_${colorKey}_$sizeKey';
   }
 
   /// Update cart item quantity
@@ -290,6 +410,20 @@ class FirestoreService {
     return null;
   }
 
+  /// Stream user cart for real-time updates
+  Stream<CartModel?> streamCart(String userId) {
+    return _firestore
+        .collection(AppConstants.cartsCollection)
+        .doc(userId)
+        .snapshots()
+        .map((doc) {
+      if (doc.exists && doc.data() != null) {
+        return CartModel.fromJson(doc.data()!);
+      }
+      return null;
+    });
+  }
+
   /// Clear cart
   Future<void> clearCart(String userId) async {
     try {
@@ -302,6 +436,214 @@ class FirestoreService {
       });
     } catch (e) {
       throw Exception('Failed to clear cart: ${e.toString()}');
+    }
+  }
+
+  /// Get product recommendations based on cart items
+  Future<List<ProductModel>> getCartRecommendations(String userId, {int limit = 6}) async {
+    try {
+      final cart = await getCart(userId);
+      if (cart == null || cart.items.isEmpty) {
+        return getPopularProducts(limit: limit);
+      }
+
+      // Get categories from cart items
+      final cartCategories = cart.items
+          .map((item) => item.product.category)
+          .toSet()
+          .toList();
+
+      // Get product IDs already in cart to exclude them
+      final cartProductIds = cart.items
+          .map((item) => item.productId)
+          .toSet();
+
+      List<ProductModel> recommendations = [];
+
+      // Strategy 1: Same category products
+      for (final category in cartCategories) {
+        final categoryProducts = await _getProductsByCategory(
+          category, 
+          limit: 4,
+          excludeIds: cartProductIds,
+        );
+        recommendations.addAll(categoryProducts);
+      }
+
+      // Strategy 2: Frequently bought together
+      final frequentlyBought = await _getFrequentlyBoughtTogether(
+        cartProductIds.toList(),
+        limit: 3,
+        excludeIds: cartProductIds,
+      );
+      recommendations.addAll(frequentlyBought);
+
+      // Strategy 3: Popular products if we don't have enough
+      if (recommendations.length < limit) {
+        final popular = await getPopularProducts(
+          limit: limit - recommendations.length,
+          excludeIds: cartProductIds,
+        );
+        recommendations.addAll(popular);
+      }
+
+      // Remove duplicates and limit results
+      final uniqueRecommendations = <String, ProductModel>{};
+      for (final product in recommendations) {
+        if (!uniqueRecommendations.containsKey(product.id)) {
+          uniqueRecommendations[product.id] = product;
+        }
+      }
+
+      return uniqueRecommendations.values.take(limit).toList();
+    } catch (e) {
+      // Fallback to popular products
+      return getPopularProducts(limit: limit);
+    }
+  }
+
+  /// Get products by category (for recommendations)
+  Future<List<ProductModel>> _getProductsByCategory(
+    String category, {
+    int limit = 4,
+    Set<String>? excludeIds,
+  }) async {
+    try {
+      Query query = _firestore
+          .collection(AppConstants.productsCollection)
+          .where('category', isEqualTo: category)
+          .where('isApproved', isEqualTo: true)
+          .orderBy('rating', descending: true)
+          .limit(limit * 2); // Get more to filter out exclusions
+
+      final querySnapshot = await query.get();
+      final products = querySnapshot.docs
+          .map((doc) => ProductModel.fromJson(doc.data() as Map<String, dynamic>))
+          .where((product) => excludeIds?.contains(product.id) != true)
+          .take(limit)
+          .toList();
+
+      return products;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Get frequently bought together products
+  Future<List<ProductModel>> _getFrequentlyBoughtTogether(
+    List<String> productIds, {
+    int limit = 3,
+    Set<String>? excludeIds,
+  }) async {
+    try {
+      // Query orders that contain any of the cart products
+      final ordersQuery = await _firestore
+          .collection(AppConstants.ordersCollection)
+          .where('status', isEqualTo: 'delivered')
+          .limit(100) // Sample recent orders
+          .get();
+
+      // Count frequency of products bought together
+      final Map<String, int> productFrequency = {};
+
+      for (final orderDoc in ordersQuery.docs) {
+        try {
+          final order = OrderModel.fromJson(orderDoc.data());
+          final orderProductIds = order.items.map((item) => item.product.id).toSet();
+          
+          // If this order contains any of our cart products
+          if (productIds.any((id) => orderProductIds.contains(id))) {
+            // Count other products in this order
+            for (final productId in orderProductIds) {
+              if (!productIds.contains(productId) && excludeIds?.contains(productId) != true) {
+                productFrequency[productId] = (productFrequency[productId] ?? 0) + 1;
+              }
+            }
+          }
+        } catch (e) {
+          // Skip invalid order documents
+          continue;
+        }
+      }
+
+      // Get top products by frequency
+      final sortedProducts = productFrequency.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      final topProductIds = sortedProducts
+          .take(limit)
+          .map((entry) => entry.key)
+          .toList();
+
+      // Fetch full product details
+      final List<ProductModel> products = [];
+      for (final productId in topProductIds) {
+        final product = await getProduct(productId);
+        if (product != null) {
+          products.add(product);
+        }
+      }
+
+      return products;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Get popular products (fallback recommendation)
+  Future<List<ProductModel>> getPopularProducts({
+    int limit = 6,
+    Set<String>? excludeIds,
+  }) async {
+    try {
+      Query query = _firestore
+          .collection(AppConstants.productsCollection)
+          .where('isApproved', isEqualTo: true)
+          .orderBy('rating', descending: true)
+          .limit(limit * 2); // Get more to filter exclusions
+
+      final querySnapshot = await query.get();
+      final products = querySnapshot.docs
+          .map((doc) => ProductModel.fromJson(doc.data() as Map<String, dynamic>))
+          .where((product) => excludeIds?.contains(product.id) != true)
+          .take(limit)
+          .toList();
+
+      return products;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Get recently viewed products for user (if tracking is implemented)
+  Future<List<ProductModel>> getRecentlyViewedProducts(
+    String userId, {
+    int limit = 4,
+    Set<String>? excludeIds,
+  }) async {
+    try {
+      // This would require implementing user activity tracking
+      // For now, return popular products as fallback
+      return getPopularProducts(limit: limit, excludeIds: excludeIds);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Track product view (for recommendation engine)
+  Future<void> trackProductView(String userId, String productId) async {
+    try {
+      await _firestore
+          .collection('user_activity')
+          .doc(userId)
+          .collection('viewed_products')
+          .doc(productId)
+          .set({
+        'productId': productId,
+        'viewedAt': Timestamp.fromDate(DateTime.now()),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      // Fail silently for tracking
     }
   }
 
@@ -384,9 +726,10 @@ class FirestoreService {
     return null;
   }
 
-  /// Get user orders
+  /// Get user orders with fallback for missing index
   Future<List<OrderModel>> getUserOrders(String userId) async {
     try {
+      // Try optimized query first (requires composite index)
       final querySnapshot = await _firestore
           .collection(AppConstants.ordersCollection)
           .where('userId', isEqualTo: userId)
@@ -397,7 +740,36 @@ class FirestoreService {
           .map((doc) => OrderModel.fromJson(doc.data()))
           .toList();
     } catch (e) {
+      // Check if error is due to missing index
+      if (e.toString().contains('failed-precondition') || 
+          e.toString().contains('requires an index')) {
+        print('Using fallback query for getUserOrders - composite index not available');
+        return _getUserOrdersFallback(userId);
+      }
       throw Exception('Failed to get user orders: ${e.toString()}');
+    }
+  }
+
+  /// Fallback method for getting user orders without composite index
+  Future<List<OrderModel>> _getUserOrdersFallback(String userId) async {
+    try {
+      // Simple query without orderBy to avoid index requirement
+      final querySnapshot = await _firestore
+          .collection(AppConstants.ordersCollection)
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      // Convert to OrderModel and sort in memory
+      final orders = querySnapshot.docs
+          .map((doc) => OrderModel.fromJson(doc.data()))
+          .toList();
+
+      // Sort by createdAt in descending order (newest first)
+      orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      return orders;
+    } catch (e) {
+      throw Exception('Failed to get user orders (fallback): ${e.toString()}');
     }
   }
 
@@ -586,12 +958,16 @@ class FirestoreService {
       final querySnapshot = await _firestore
           .collection(AppConstants.productsCollection)
           .where('vendorId', isEqualTo: vendorId)
-          .orderBy('createdAt', descending: true)
           .get();
 
-      return querySnapshot.docs
+      final products = querySnapshot.docs
           .map((doc) => ProductModel.fromJson(doc.data()))
           .toList();
+
+      // Sort by creation date on client side (newest first)
+      products.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      return products;
     } catch (e) {
       throw Exception('Failed to get vendor products: ${e.toString()}');
     }
@@ -684,6 +1060,1014 @@ class FirestoreService {
       }
     } catch (e) {
       throw Exception('Failed to create demo accounts: ${e.toString()}');
+    }
+  }
+
+  // PRODUCT SECTIONS OPERATIONS
+
+  /// Get all active product sections for homepage
+  Stream<List<ProductSection>> getProductSectionsStream() {
+    return _firestore
+        .collection(AppConstants.productSectionsCollection)
+        .snapshots()
+        .asyncMap((snapshot) async {
+      final sections = <ProductSection>[];
+      
+      for (final doc in snapshot.docs) {
+        final sectionData = doc.data();
+        
+        // Only include active sections
+        final isActive = sectionData['isActive'] as bool? ?? false;
+        if (!isActive) continue;
+        
+        // Fetch products for this section
+        final productIds = (sectionData['productIds'] as List<dynamic>?)
+            ?.map((id) => id as String)
+            .toList() ?? [];
+            
+        final products = <ProductModel>[];
+        
+        if (productIds.isNotEmpty) {
+          final productDocs = await _firestore
+              .collection(AppConstants.productsCollection)
+              .where(FieldPath.documentId, whereIn: productIds.take(10).toList())
+              .get();
+              
+          products.addAll(productDocs.docs
+              .map((doc) => ProductModel.fromJson(doc.data())));
+        }
+        
+        sections.add(ProductSection.fromJson({
+          ...sectionData,
+          'id': doc.id,
+          'products': products.map((p) => p.toJson()).toList(),
+        }));
+      }
+      
+      // Sort sections by order
+      sections.sort((a, b) => a.order.compareTo(b.order));
+      
+      return sections;
+    });
+  }
+
+  /// Get product sections as future (alternative to stream)
+  Future<List<ProductSection>> getProductSections() async {
+    try {
+      final querySnapshot = await _firestore
+          .collection(AppConstants.productSectionsCollection)
+          .get();
+
+      final sections = <ProductSection>[];
+      
+      for (final doc in querySnapshot.docs) {
+        final sectionData = doc.data();
+        
+        // Filter for active sections only
+        final isActive = sectionData['isActive'] as bool? ?? false;
+        if (!isActive) continue;
+        
+        final productIds = List<String>.from(sectionData['productIds'] ?? []);
+        
+        // Fetch products for this section
+        final products = await _getProductsByIds(productIds);
+        
+        // Create section with products
+        final section = ProductSection(
+          id: doc.id,
+          title: sectionData['title'] as String,
+          subtitle: sectionData['subtitle'] as String?,
+          products: products,
+          seeMoreText: sectionData['seeMoreText'] as String?,
+          seeMoreRoute: sectionData['seeMoreRoute'] as String?,
+          displayCount: sectionData['displayCount'] as int? ?? 4,
+          imageUrl: sectionData['imageUrl'] as String?,
+          isActive: isActive,
+          order: sectionData['order'] as int? ?? 0,
+          createdAt: (sectionData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          updatedAt: sectionData['updatedAt'] != null
+              ? (sectionData['updatedAt'] as Timestamp).toDate()
+              : null,
+          metadata: sectionData['metadata'] as Map<String, dynamic>?,
+        );
+        
+        sections.add(section);
+      }
+      
+      // Sort sections by order after filtering
+      sections.sort((a, b) => a.order.compareTo(b.order));
+      
+      return sections;
+    } catch (e) {
+      throw Exception('Failed to get product sections: ${e.toString()}');
+    }
+  }
+
+  /// Helper method to fetch products by their IDs
+  Future<List<ProductModel>> _getProductsByIds(List<String> productIds) async {
+    if (productIds.isEmpty) {
+      print('DEBUG: No product IDs provided');
+      return [];
+    }
+    
+    try {
+      print('DEBUG: Fetching products for IDs: $productIds');
+      
+      // Firestore 'in' query supports max 10 items, so batch if needed
+      final products = <ProductModel>[];
+      
+      for (int i = 0; i < productIds.length; i += 10) {
+        final batch = productIds.skip(i).take(10).toList();
+        print('DEBUG: Processing batch: $batch');
+        
+        final querySnapshot = await _firestore
+            .collection(AppConstants.productsCollection)
+            .where(FieldPath.documentId, whereIn: batch)
+            .get(); // Remove filters temporarily for debugging
+        
+        print('DEBUG: Found ${querySnapshot.docs.length} products in batch');
+        
+        for (final doc in querySnapshot.docs) {
+          final data = doc.data();
+          print('DEBUG: Product ${doc.id}: isActive=${data['isActive']}, isApproved=${data['isApproved']}');
+          
+          // Only include approved and active products in the final result
+          if (data['isApproved'] == true && data['isActive'] == true) {
+            final product = ProductModel.fromJson(data);
+            products.add(product);
+          }
+        }
+      }
+      
+      print('DEBUG: Returning ${products.length} approved & active products');
+      
+      // Sort products according to the original order in productIds
+      products.sort((a, b) {
+        final indexA = productIds.indexOf(a.id);
+        final indexB = productIds.indexOf(b.id);
+        return indexA.compareTo(indexB);
+      });
+      
+      return products;
+    } catch (e) {
+      print('ERROR in _getProductsByIds: ${e.toString()}');
+      throw Exception('Failed to fetch products by IDs: ${e.toString()}');
+    }
+  }
+
+  /// Create a new product section (admin only)
+  Future<String> createProductSection(ProductSection section) async {
+    try {
+      final docRef = await _firestore
+          .collection(AppConstants.productSectionsCollection)
+          .add({
+        'title': section.title,
+        'subtitle': section.subtitle,
+        'productIds': section.products.map((p) => p.id).toList(),
+        'seeMoreText': section.seeMoreText,
+        'seeMoreRoute': section.seeMoreRoute,
+        'displayCount': section.displayCount,
+        'imageUrl': section.imageUrl,
+        'isActive': section.isActive,
+        'order': section.order,
+        'createdAt': Timestamp.fromDate(section.createdAt),
+        'metadata': section.metadata,
+      });
+      
+      // Update with generated ID
+      await docRef.update({'id': docRef.id});
+      
+      return docRef.id;
+    } catch (e) {
+      throw Exception('Failed to create product section: ${e.toString()}');
+    }
+  }
+
+  /// Update product section (admin only)
+  Future<void> updateProductSection(String sectionId, Map<String, dynamic> data) async {
+    try {
+      await _firestore
+          .collection(AppConstants.productSectionsCollection)
+          .doc(sectionId)
+          .update({
+        ...data,
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
+      });
+    } catch (e) {
+      throw Exception('Failed to update product section: ${e.toString()}');
+    }
+  }
+
+  /// Delete product section (admin only)
+  Future<void> deleteProductSection(String sectionId) async {
+    try {
+      await _firestore
+          .collection(AppConstants.productSectionsCollection)
+          .doc(sectionId)
+          .delete();
+    } catch (e) {
+      throw Exception('Failed to delete product section: ${e.toString()}');
+    }
+  }
+
+  /// Create demo product sections for testing
+  Future<void> createDemoProductSections() async {
+    try {
+      // Get some products for the demo sections
+      final allProducts = await getProducts(limit: 50);
+      final products = allProducts.where((p) => p.isApproved && p.isActive).toList();
+      
+      if (products.length < 8) {
+        throw Exception('Not enough products to create demo sections. Please add at least 8 products first.');
+      }
+
+      final demoSections = [
+        {
+          'title': 'Appliances for your home | Up to 55% off',
+          'subtitle': 'Best deals on home appliances',
+          'productIds': products.take(4).map((p) => p.id).toList(),
+          'seeMoreText': 'See more',
+          'seeMoreRoute': '/products?category=Electronics',
+          'displayCount': 4,
+          'order': 0,
+          'isActive': true,
+          'createdAt': Timestamp.fromDate(DateTime.now()),
+          'metadata': {
+            'backgroundColor': '#ffffff',
+            'textColor': '#000000',
+          },
+        },
+        {
+          'title': 'Starting ₹149 | Headphones',
+          'subtitle': 'Premium audio experience',
+          'productIds': products.skip(4).take(4).map((p) => p.id).toList(),
+          'seeMoreText': 'See all offers',
+          'seeMoreRoute': '/products?category=Electronics',
+          'displayCount': 4,
+          'order': 1,
+          'isActive': true,
+          'createdAt': Timestamp.fromDate(DateTime.now()),
+          'metadata': {
+            'backgroundColor': '#ffffff',
+            'textColor': '#000000',
+          },
+        },
+        {
+          'title': 'Revamp your home in style',
+          'subtitle': 'Beautiful home decor items',
+          'productIds': products.skip(8).take(4).map((p) => p.id).toList(),
+          'seeMoreText': 'Explore all',
+          'seeMoreRoute': '/products?category=Home & Kitchen',
+          'displayCount': 4,
+          'order': 2,
+          'isActive': true,
+          'createdAt': Timestamp.fromDate(DateTime.now()),
+          'metadata': {
+            'backgroundColor': '#ffffff',
+            'textColor': '#000000',
+          },
+        },
+        {
+          'title': 'Fashion trends | Up to 60% off',
+          'subtitle': 'Latest fashion collection',
+          'productIds': products.skip(12).take(4).map((p) => p.id).toList(),
+          'seeMoreText': 'Shop now',
+          'seeMoreRoute': '/products?category=Fashion',
+          'displayCount': 4,
+          'order': 3,
+          'isActive': true,
+          'createdAt': Timestamp.fromDate(DateTime.now()),
+          'metadata': {
+            'backgroundColor': '#ffffff',
+            'textColor': '#000000',
+          },
+        },
+      ];
+
+      for (final section in demoSections) {
+        // Check if section already exists
+        final existing = await _firestore
+            .collection(AppConstants.productSectionsCollection)
+            .where('title', isEqualTo: section['title'])
+            .get();
+
+        if (existing.docs.isEmpty) {
+          await _firestore
+              .collection(AppConstants.productSectionsCollection)
+              .add(section);
+        }
+      }
+    } catch (e) {
+      throw Exception('Failed to create demo product sections: ${e.toString()}');
+    }
+  }
+
+  /// Ensure data exists and is properly configured
+  Future<Map<String, dynamic>> ensureDataExists() async {
+    final result = <String, dynamic>{
+      'hasProducts': false,
+      'hasApprovedProducts': false,
+      'hasSections': false,
+      'hasValidSections': false,
+      'productCount': 0,
+      'approvedProductCount': 0,
+      'sectionCount': 0,
+      'validSectionCount': 0,
+      'errors': <String>[],
+      'fixes': <String>[],
+    };
+
+    try {
+      // Check products
+      final productsSnapshot = await _firestore
+          .collection(AppConstants.productsCollection)
+          .get();
+      
+      result['productCount'] = productsSnapshot.docs.length;
+      result['hasProducts'] = productsSnapshot.docs.isNotEmpty;
+
+      int approvedCount = 0;
+      final unapprovedProducts = <String>[];
+      
+      for (final doc in productsSnapshot.docs) {
+        final data = doc.data();
+        if (data['isApproved'] == true && data['isActive'] == true) {
+          approvedCount++;
+        } else {
+          unapprovedProducts.add(doc.id);
+        }
+      }
+
+      result['approvedProductCount'] = approvedCount;
+      result['hasApprovedProducts'] = approvedCount > 0;
+
+      // Create basic test data if no products exist at all
+      if (result['productCount'] == 0) {
+        await createBasicTestData();
+        result['fixes'].add('Created basic test data (4 products + 1 section)');
+        result['productCount'] = 4;
+        result['approvedProductCount'] = 4;
+        result['hasProducts'] = true;
+        result['hasApprovedProducts'] = true;
+      } 
+      // Auto-approve products if needed (only if we don't have enough approved products)
+      else if (unapprovedProducts.isNotEmpty && approvedCount < 4) {
+        final productsToApprove = unapprovedProducts.take(8).toList();
+        await _autoApproveProducts(productsToApprove);
+        result['fixes'].add('Auto-approved ${productsToApprove.length} products');
+        result['approvedProductCount'] = approvedCount + productsToApprove.length;
+        result['hasApprovedProducts'] = true;
+      }
+
+      // Check sections
+      final sectionsSnapshot = await _firestore
+          .collection(AppConstants.productSectionsCollection)
+          .get();
+      
+      result['sectionCount'] = sectionsSnapshot.docs.length;
+      result['hasSections'] = sectionsSnapshot.docs.isNotEmpty;
+
+      int validCount = 0;
+      for (final doc in sectionsSnapshot.docs) {
+        final data = doc.data();
+        if (data['isActive'] == true && 
+            data['productIds'] != null && 
+            (data['productIds'] as List).isNotEmpty) {
+          validCount++;
+        }
+      }
+
+      result['validSectionCount'] = validCount;
+      result['hasValidSections'] = validCount > 0;
+
+      // Create demo data if needed (skip if we just created basic test data)
+      if (!result['hasValidSections'] && result['hasApprovedProducts'] && result['productCount'] > 4) {
+        try {
+          await createDemoProductSections();
+          result['fixes'].add('Created demo product sections');
+          result['hasSections'] = true;
+          result['hasValidSections'] = true;
+          result['sectionCount'] = 4;
+          result['validSectionCount'] = 4;
+        } catch (e) {
+          result['errors'].add('Failed to create demo sections: $e');
+        }
+      }
+      
+      // If we created basic test data, we already have a section
+      if (result['productCount'] == 4 && result['fixes'].contains('Created basic test data (4 products + 1 section)')) {
+        result['sectionCount'] = 1;
+        result['validSectionCount'] = 1;
+        result['hasSections'] = true;
+        result['hasValidSections'] = true;
+      }
+
+    } catch (e) {
+      result['errors'].add('Error checking data: $e');
+    }
+
+    return result;
+  }
+
+  /// Auto-approve products for demo purposes
+  Future<void> _autoApproveProducts(List<String> productIds) async {
+    try {
+      final batch = _firestore.batch();
+      
+      for (final productId in productIds) {
+        final docRef = _firestore
+            .collection(AppConstants.productsCollection)
+            .doc(productId);
+        
+        batch.update(docRef, {
+          'isApproved': true,
+          'isActive': true,
+          'updatedAt': Timestamp.now(),
+        });
+      }
+      
+      await batch.commit();
+      print('DEBUG: Auto-approved ${productIds.length} products');
+    } catch (e) {
+      print('ERROR: Failed to auto-approve products: $e');
+      throw Exception('Failed to auto-approve products: $e');
+    }
+  }
+
+  /// Check and fix data issues automatically
+  Future<String> checkAndFixData() async {
+    final buffer = StringBuffer();
+    buffer.writeln('🔧 AUTO-FIX RESULTS:');
+    buffer.writeln('─' * 50);
+    
+    try {
+      final result = await ensureDataExists();
+      
+      if (result['hasValidSections']) {
+        buffer.writeln('✅ Data is properly configured!');
+        buffer.writeln('   • Products: ${result['approvedProductCount']}');
+        buffer.writeln('   • Sections: ${result['validSectionCount']}');
+      } else {
+        buffer.writeln('🔧 Applied fixes:');
+        for (final fix in result['fixes']) {
+          buffer.writeln('   ✅ $fix');
+        }
+        
+        if (result['errors'].isNotEmpty) {
+          buffer.writeln('\n❌ Remaining issues:');
+          for (final error in result['errors']) {
+            buffer.writeln('   • $error');
+          }
+        }
+      }
+      
+    } catch (e) {
+      buffer.writeln('❌ Auto-fix failed: $e');
+    }
+    
+    return buffer.toString();
+  }
+
+  /// Create basic test data if none exists
+  Future<void> createBasicTestData() async {
+    try {
+      print('DEBUG: Creating basic test data...');
+      
+      // Create a few basic products
+      final testProducts = [
+        {
+          'id': '', // Will be set by Firestore
+          'name': 'Wireless Bluetooth Headphones',
+          'description': 'High-quality wireless headphones with noise cancellation',
+          'price': 2999.0,
+          'originalPrice': 4999.0,
+          'currency': 'INR',
+          'category': 'Electronics',
+          'subcategory': 'Audio',
+          'brand': 'TechBrand',
+          'sku': 'WBH001',
+          'stockQuantity': 50,
+          'tags': ['wireless', 'bluetooth', 'headphones', 'audio'],
+          'imageUrls': ['https://via.placeholder.com/300x300?text=Headphones'],
+          'thumbnailUrl': 'https://via.placeholder.com/150x150?text=Headphones',
+          'specifications': {
+            'Battery Life': '30 hours',
+            'Connectivity': 'Bluetooth 5.0',
+            'Color': 'Black'
+          },
+          'features': ['Noise Cancellation', 'Fast Charging', 'Lightweight'],
+          'colors': ['Black', 'White', 'Blue'],
+          'sizes': [],
+          'vendorId': 'demo_vendor',
+          'vendorName': 'Demo Electronics Store',
+          'rating': 4.5,
+          'reviewCount': 128,
+          'isActive': true,
+          'isApproved': true,
+          'isFeatured': true,
+          'createdAt': Timestamp.now(),
+          'updatedAt': Timestamp.now(),
+        },
+        {
+          'id': '',
+          'name': 'Smartphone Case',
+          'description': 'Protective case for smartphones with anti-shock design',
+          'price': 499.0,
+          'originalPrice': 799.0,
+          'currency': 'INR',
+          'category': 'Electronics',
+          'subcategory': 'Accessories',
+          'brand': 'ProtectBrand',
+          'sku': 'SC001',
+          'stockQuantity': 100,
+          'tags': ['case', 'protection', 'smartphone', 'accessories'],
+          'imageUrls': ['https://via.placeholder.com/300x300?text=Phone+Case'],
+          'thumbnailUrl': 'https://via.placeholder.com/150x150?text=Phone+Case',
+          'specifications': {
+            'Material': 'TPU + PC',
+            'Compatibility': 'Universal',
+            'Color': 'Transparent'
+          },
+          'features': ['Anti-Shock', 'Transparent', 'Easy Installation'],
+          'colors': ['Clear', 'Black', 'Blue'],
+          'sizes': [],
+          'vendorId': 'demo_vendor',
+          'vendorName': 'Demo Electronics Store',
+          'rating': 4.2,
+          'reviewCount': 89,
+          'isActive': true,
+          'isApproved': true,
+          'isFeatured': false,
+          'createdAt': Timestamp.now(),
+          'updatedAt': Timestamp.now(),
+        },
+        {
+          'id': '',
+          'name': 'Cotton T-Shirt',
+          'description': 'Comfortable cotton t-shirt for everyday wear',
+          'price': 799.0,
+          'originalPrice': 1299.0,
+          'currency': 'INR',
+          'category': 'Fashion',
+          'subcategory': 'Clothing',
+          'brand': 'ComfortWear',
+          'sku': 'CT001',
+          'stockQuantity': 75,
+          'tags': ['t-shirt', 'cotton', 'casual', 'fashion'],
+          'imageUrls': ['https://via.placeholder.com/300x300?text=T-Shirt'],
+          'thumbnailUrl': 'https://via.placeholder.com/150x150?text=T-Shirt',
+          'specifications': {
+            'Material': '100% Cotton',
+            'Fit': 'Regular',
+            'Fabric': 'Cotton'
+          },
+          'features': ['Breathable', 'Comfortable', 'Easy Care'],
+          'colors': ['White', 'Black', 'Navy', 'Red'],
+          'sizes': ['S', 'M', 'L', 'XL'],
+          'vendorId': 'demo_vendor',
+          'vendorName': 'Demo Fashion Store',
+          'rating': 4.3,
+          'reviewCount': 156,
+          'isActive': true,
+          'isApproved': true,
+          'isFeatured': false,
+          'createdAt': Timestamp.now(),
+          'updatedAt': Timestamp.now(),
+        },
+        {
+          'id': '',
+          'name': 'Coffee Mug',
+          'description': 'Ceramic coffee mug perfect for your morning coffee',
+          'price': 299.0,
+          'originalPrice': 499.0,
+          'currency': 'INR',
+          'category': 'Home & Kitchen',
+          'subcategory': 'Drinkware',
+          'brand': 'HomeBrand',
+          'sku': 'CM001',
+          'stockQuantity': 200,
+          'tags': ['mug', 'coffee', 'ceramic', 'kitchen'],
+          'imageUrls': ['https://via.placeholder.com/300x300?text=Coffee+Mug'],
+          'thumbnailUrl': 'https://via.placeholder.com/150x150?text=Coffee+Mug',
+          'specifications': {
+            'Material': 'Ceramic',
+            'Capacity': '300ml',
+            'Color': 'White'
+          },
+          'features': ['Microwave Safe', 'Dishwasher Safe', 'Durable'],
+          'colors': ['White', 'Black', 'Blue'],
+          'sizes': [],
+          'vendorId': 'demo_vendor',
+          'vendorName': 'Demo Home Store',
+          'rating': 4.1,
+          'reviewCount': 67,
+          'isActive': true,
+          'isApproved': true,
+          'isFeatured': false,
+          'createdAt': Timestamp.now(),
+          'updatedAt': Timestamp.now(),
+        },
+      ];
+
+      final productIds = <String>[];
+      
+      // Add each product to Firestore
+      for (final productData in testProducts) {
+        final docRef = await _firestore
+            .collection(AppConstants.productsCollection)
+            .add(productData);
+        
+        // Update with the generated ID
+        await docRef.update({'id': docRef.id});
+        productIds.add(docRef.id);
+        
+        print('DEBUG: Created test product: ${productData['name']} with ID: ${docRef.id}');
+      }
+
+      print('DEBUG: Created ${productIds.length} test products');
+      
+      // Now create a test section with these products
+      final testSection = {
+        'title': 'Featured Products | Great Deals',
+        'subtitle': 'Hand-picked products just for you',
+        'productIds': productIds,
+        'seeMoreText': 'See all products',
+        'seeMoreRoute': '/products',
+        'displayCount': 4,
+        'order': 0,
+        'isActive': true,
+        'createdAt': Timestamp.now(),
+        'metadata': {
+          'backgroundColor': '#ffffff',
+          'textColor': '#000000',
+        },
+      };
+
+      final sectionRef = await _firestore
+          .collection(AppConstants.productSectionsCollection)
+          .add(testSection);
+      
+      await sectionRef.update({'id': sectionRef.id});
+      
+      print('DEBUG: Created test section: ${testSection['title']} with ID: ${sectionRef.id}');
+      
+    } catch (e) {
+      print('ERROR: Failed to create basic test data: $e');
+      throw Exception('Failed to create basic test data: $e');
+    }
+  }
+
+  /// Get banners stream for homepage
+  Stream<List<BannerModel>> getBannersStream() {
+    return _firestore
+        .collection(AppConstants.bannersCollection)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => BannerModel.fromJson({...doc.data(), 'id': doc.id}))
+            .where((banner) => banner.isActive && banner.isCurrentlyActive)
+            .toList()
+            ..sort((a, b) => a.order.compareTo(b.order)));
+  }
+
+  /// Get categories stream for homepage
+  Stream<List<CategoryModel>> getCategoriesStream() {
+    return _firestore
+        .collection(AppConstants.categoriesCollection)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => CategoryModel.fromJson({...doc.data(), 'id': doc.id}))
+            .where((category) => category.isActive)
+            .toList()
+            ..sort((a, b) => a.order.compareTo(b.order)));
+  }
+
+  /// Get deals stream for homepage
+  Stream<List<DealModel>> getDealsStream() {
+    return _firestore
+        .collection('deals')
+        .limit(50)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => DealModel.fromJson({...doc.data(), 'id': doc.id}))
+            .where((deal) => deal.isActive && deal.isCurrentlyActive)
+            .toList()
+            ..sort((a, b) => b.startDate.compareTo(a.startDate))
+            ..take(20).toList());
+  }
+
+  /// Get search suggestions based on query
+  Future<List<String>> getSearchSuggestions(String query) async {
+    try {
+      final lowerQuery = query.toLowerCase();
+      
+      // Search in product names
+      final productQuery = await _firestore
+          .collection(AppConstants.productsCollection)
+          .where('name', isGreaterThanOrEqualTo: lowerQuery)
+          .where('name', isLessThan: lowerQuery + 'z')
+          .limit(10)
+          .get();
+      
+      final productSuggestions = productQuery.docs
+          .map((doc) => doc.data()['name'] as String)
+          .toList();
+      
+      // Search in categories
+      final categoryQuery = await _firestore
+          .collection(AppConstants.categoriesCollection)
+          .where('name', isGreaterThanOrEqualTo: lowerQuery)
+          .where('name', isLessThan: lowerQuery + 'z')
+          .limit(5)
+          .get();
+      
+      final categorySuggestions = categoryQuery.docs
+          .map((doc) => doc.data()['name'] as String)
+          .toList();
+      
+      // Combine and return unique suggestions
+      final allSuggestions = [...productSuggestions, ...categorySuggestions];
+      return allSuggestions.toSet().take(10).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Get cart item count stream for a user
+  Stream<int> getCartItemCountStream(String userId) {
+    return _firestore
+        .collection(AppConstants.usersCollection)
+        .doc(userId)
+        .collection('cart')
+        .snapshots()
+        .map((snapshot) => snapshot.docs.length);
+  }
+
+  /// Search products by query
+  Future<List<ProductModel>> searchProducts(String query, {int limit = 20}) async {
+    try {
+      final lowerQuery = query.toLowerCase();
+      
+      final querySnapshot = await _firestore
+          .collection(AppConstants.productsCollection)
+          .where('name', isGreaterThanOrEqualTo: lowerQuery)
+          .where('name', isLessThan: lowerQuery + 'z')
+          .limit(limit)
+          .get();
+      
+      return querySnapshot.docs
+          .map((doc) => ProductModel.fromJson(doc.data()))
+          .toList();
+    } catch (e) {
+      throw Exception('Failed to search products: ${e.toString()}');
+    }
+  }
+
+  /// Create comprehensive demo data for testing the dynamic homepage
+  Future<void> createDemoHomeData() async {
+    try {
+      print('DEBUG: Starting comprehensive demo data creation...');
+      
+      // 1. Create demo banners
+      await _createDemoBanners();
+      
+      // 2. Create demo categories
+      await _createDemoCategories();
+      
+      // 3. Create demo deals
+      await _createDemoDeals();
+      
+      // 4. Create demo products and sections (existing functionality)
+      await createBasicTestData();
+      
+      print('DEBUG: ✅ All demo data created successfully!');
+    } catch (e) {
+      print('ERROR: Failed to create demo home data: $e');
+      throw Exception('Failed to create demo home data: $e');
+    }
+  }
+
+  /// Create demo banners
+  Future<void> _createDemoBanners() async {
+    final demoBanners = [
+      {
+        'title': 'Summer Sale 2024',
+        'description': 'Up to 70% off on electronics, fashion & more',
+        'imageUrl': 'https://via.placeholder.com/1200x400/FF6B35/FFFFFF?text=Summer+Sale+2024',
+        'actionText': 'Shop Now',
+        'actionRoute': '/deals',
+        'isActive': true,
+        'order': 0,
+        'startDate': Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 1))),
+        'endDate': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
+        'backgroundColor': '#FF6B35',
+        'textColor': '#FFFFFF',
+        'metadata': {
+          'priority': 'high',
+          'category': 'promotion'
+        }
+      },
+      {
+        'title': 'Free Shipping Weekend',
+        'description': 'Free delivery on orders above ₹499',
+        'imageUrl': 'https://via.placeholder.com/1200x400/2ECC71/FFFFFF?text=Free+Shipping',
+        'actionText': 'Explore',
+        'actionRoute': '/products',
+        'isActive': true,
+        'order': 1,
+        'startDate': Timestamp.fromDate(DateTime.now()),
+        'endDate': Timestamp.fromDate(DateTime.now().add(const Duration(days: 3))),
+        'backgroundColor': '#2ECC71',
+        'textColor': '#FFFFFF',
+        'metadata': {
+          'priority': 'medium',
+          'category': 'shipping'
+        }
+      },
+      {
+        'title': 'New Arrivals',
+        'description': 'Discover the latest trends in fashion',
+        'imageUrl': 'https://via.placeholder.com/1200x400/9B59B6/FFFFFF?text=New+Arrivals',
+        'actionText': 'Browse',
+        'actionRoute': '/category/fashion',
+        'isActive': true,
+        'order': 2,
+        'startDate': Timestamp.fromDate(DateTime.now()),
+        'endDate': Timestamp.fromDate(DateTime.now().add(const Duration(days: 15))),
+        'backgroundColor': '#9B59B6',
+        'textColor': '#FFFFFF',
+        'metadata': {
+          'priority': 'low',
+          'category': 'new'
+        }
+      }
+    ];
+
+    for (final banner in demoBanners) {
+      final docRef = await _firestore
+          .collection(AppConstants.bannersCollection)
+          .add(banner);
+      await docRef.update({'id': docRef.id});
+      print('DEBUG: Created banner: ${banner['title']}');
+    }
+  }
+
+  /// Create demo categories  
+  Future<void> _createDemoCategories() async {
+    final demoCategories = [
+      {
+        'name': 'Electronics',
+        'description': 'Latest gadgets and electronics',
+        'iconData': 'phone_android',
+        'imageUrl': 'https://via.placeholder.com/200x200/3498DB/FFFFFF?text=Electronics',
+        'color': '#3498DB',
+        'subcategories': ['Smartphones', 'Laptops', 'Headphones', 'Smart Watches'],
+        'isActive': true,
+        'order': 0,
+        'productCount': 150,
+        'metadata': {
+          'featured': true,
+          'trending': true
+        }
+      },
+      {
+        'name': 'Fashion',
+        'description': 'Trendy clothing and accessories',
+        'iconData': 'checkroom',
+        'imageUrl': 'https://via.placeholder.com/200x200/E74C3C/FFFFFF?text=Fashion',
+        'color': '#E74C3C',
+        'subcategories': ['Men\'s Clothing', 'Women\'s Clothing', 'Shoes', 'Accessories'],
+        'isActive': true,
+        'order': 1,
+        'productCount': 89,
+        'metadata': {
+          'featured': true,
+          'seasonal': true
+        }
+      },
+      {
+        'name': 'Home & Kitchen',
+        'description': 'Everything for your home',
+        'iconData': 'home',
+        'imageUrl': 'https://via.placeholder.com/200x200/27AE60/FFFFFF?text=Home',
+        'color': '#27AE60',
+        'subcategories': ['Furniture', 'Kitchen Appliances', 'Home Decor', 'Garden'],
+        'isActive': true,
+        'order': 2,
+        'productCount': 67,
+        'metadata': {
+          'featured': false,
+          'essential': true
+        }
+      },
+      {
+        'name': 'Books',
+        'description': 'Books, e-books and audiobooks',
+        'iconData': 'menu_book',
+        'imageUrl': 'https://via.placeholder.com/200x200/F39C12/FFFFFF?text=Books',
+        'color': '#F39C12',
+        'subcategories': ['Fiction', 'Non-Fiction', 'Educational', 'Comics'],
+        'isActive': true,
+        'order': 3,
+        'productCount': 234,
+        'metadata': {
+          'featured': false,
+          'knowledge': true
+        }
+      },
+      {
+        'name': 'Sports & Fitness',
+        'description': 'Sports equipment and fitness gear',
+        'iconData': 'fitness_center',
+        'imageUrl': 'https://via.placeholder.com/200x200/9B59B6/FFFFFF?text=Sports',
+        'color': '#9B59B6',
+        'subcategories': ['Gym Equipment', 'Outdoor Sports', 'Yoga & Fitness', 'Team Sports'],
+        'isActive': true,
+        'order': 4,
+        'productCount': 45,
+        'metadata': {
+          'featured': false,
+          'health': true
+        }
+      }
+    ];
+
+    for (final category in demoCategories) {
+      final docRef = await _firestore
+          .collection(AppConstants.categoriesCollection)
+          .add(category);
+      await docRef.update({'id': docRef.id});
+      print('DEBUG: Created category: ${category['name']}');
+    }
+  }
+
+  /// Create demo deals
+  Future<void> _createDemoDeals() async {
+    final demoDeals = [
+      {
+        'title': 'Flash Sale: Smartphones',
+        'description': 'Up to 40% off on premium smartphones',
+        'imageUrl': 'https://via.placeholder.com/300x200/E74C3C/FFFFFF?text=Smartphone+Deal',
+        'discountPercentage': 40.0,
+        'originalPrice': 25000.0,
+        'salePrice': 15000.0,
+        'productId': 'phone_deal_001',
+        'category': 'Electronics',
+        'isActive': true,
+        'startDate': Timestamp.fromDate(DateTime.now().subtract(const Duration(hours: 2))),
+        'endDate': Timestamp.fromDate(DateTime.now().add(const Duration(days: 2))),
+        'stockLimit': 50,
+        'soldCount': 23,
+        'metadata': {
+          'priority': 'high',
+          'badge': 'Limited Time'
+        }
+      },
+      {
+        'title': 'Fashion Week Special',
+        'description': 'Designer clothing at unbeatable prices',
+        'imageUrl': 'https://via.placeholder.com/300x200/9B59B6/FFFFFF?text=Fashion+Deal',
+        'discountPercentage': 60.0,
+        'originalPrice': 2999.0,
+        'salePrice': 1199.0,
+        'productId': 'fashion_deal_001',
+        'category': 'Fashion',
+        'isActive': true,
+        'startDate': Timestamp.fromDate(DateTime.now()),
+        'endDate': Timestamp.fromDate(DateTime.now().add(const Duration(days: 5))),
+        'stockLimit': 100,
+        'soldCount': 67,
+        'metadata': {
+          'priority': 'medium',
+          'badge': 'Best Seller'
+        }
+      },
+      {
+        'title': 'Home Makeover Sale',
+        'description': 'Transform your home with our collection',
+        'imageUrl': 'https://via.placeholder.com/300x200/27AE60/FFFFFF?text=Home+Deal',
+        'discountPercentage': 35.0,
+        'originalPrice': 4999.0,
+        'salePrice': 3249.0,
+        'productId': 'home_deal_001',
+        'category': 'Home & Kitchen',
+        'isActive': true,
+        'startDate': Timestamp.fromDate(DateTime.now().add(const Duration(hours: 1))),
+        'endDate': Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
+        'stockLimit': 75,
+        'soldCount': 12,
+        'metadata': {
+          'priority': 'low',
+          'badge': 'New Arrival'
+        }
+      }
+    ];
+
+    for (final deal in demoDeals) {
+      final docRef = await _firestore
+          .collection('deals')
+          .add(deal);
+      await docRef.update({'id': docRef.id});
+      print('DEBUG: Created deal: ${deal['title']}');
     }
   }
 } 

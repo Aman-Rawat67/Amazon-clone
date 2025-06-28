@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
-import '../../constants/app_constants.dart';
-import 'dart:convert';
-import 'dart:typed_data';
+import '../../widgets/home/top_nav_bar.dart';
+import '../../widgets/home/category_nav_bar.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'product_detail_screen.dart';
 
@@ -13,14 +12,14 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(userProvider);
     final isMobile = MediaQuery.of(context).size.width < 700 && !kIsWeb;
 
     return Scaffold(
       backgroundColor: const Color(0xFFEAeded),
       body: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(child: _AmazonHeader()),
+          SliverToBoxAdapter(child: TopNavBar()),
+          SliverToBoxAdapter(child: CategoryNavBar()),
           SliverPersistentHeader(
             pinned: true,
             delegate: _MenuBarDelegate(child: _AmazonMenuBar()),
@@ -176,188 +175,6 @@ class HomeScreen extends ConsumerWidget {
               },
             )
           : null,
-    );
-  }
-}
-
-const String amazonLogoBase64 = '...'; // (Insert your full base64 string here)
-
-class _AmazonHeader extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 600;
-    return Container(
-      color: const Color(0xFF131921),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-      height: 58,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Amazon logo
-          Image.network(
-            'https://cdn.pixabay.com/photo/2021/08/10/16/02/amazon-6536326_1280.png',
-            height: 32,
-          ),
-          const SizedBox(width: 4),
-          const Text(
-            '.in',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              letterSpacing: -1,
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Location
-          Row(
-            children: [
-              const Icon(Icons.location_on_outlined, color: Color(0xFFCCCCCC), size: 20),
-              const SizedBox(width: 2),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'Delivering to Aligarh 202001',
-                    style: TextStyle(color: Color(0xFFCCCCCC), fontSize: 11, height: 1.1),
-                  ),
-                  Text(
-                    'Update location',
-                    style: TextStyle(
-                      color: Color(0xFF6BB4F7),
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      height: 1.1,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(width: 16),
-          // Search bar
-          Expanded(
-            child: Container(
-              height: 40,
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                children: [
-                  // Dropdown for 'All'
-                  Container(
-                    height: 40,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF3F3F3),
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(4),
-                        bottomLeft: Radius.circular(4),
-                      ),
-                    ),
-                    child: Row(
-                      children: const [
-                        Text('All', style: TextStyle(fontSize: 14, color: Colors.black87)),
-                        Icon(Icons.arrow_drop_down, color: Colors.black54, size: 20),
-                      ],
-                    ),
-                  ),
-                  // Search field
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Search Amazon.in',
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        style: const TextStyle(fontSize: 15),
-                      ),
-                    ),
-                  ),
-                  // Search button
-                  Container(
-                    height: 40,
-                    width: 48,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFFA41C),
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(4),
-                        bottomRight: Radius.circular(4),
-                      ),
-                    ),
-                    child: const Icon(Icons.search, color: Colors.black87, size: 26),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Language
-          Row(
-            children: [
-              const SizedBox(width: 2),
-              const Text('EN', style: TextStyle(color: Colors.white, fontSize: 13)),
-              const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
-            ],
-          ),
-          const SizedBox(width: 16),
-          // Account & Lists
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text('Hello, sign in', style: TextStyle(color: Colors.white, fontSize: 12)),
-              Row(
-                children: [
-                  Text('Account & Lists', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                  Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(width: 16),
-          // Orders
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text('Returns', style: TextStyle(color: Colors.white, fontSize: 12)),
-              Text('& Orders', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-            ],
-          ),
-          const SizedBox(width: 16),
-          // Cart
-          Row(
-            children: [
-              Stack(
-                children: [
-                  const Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 28),
-                  Positioned(
-                    right: 0,
-                    top: 2,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFFFA41C),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Text('0', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black)),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 2),
-              const Text('Cart', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }
@@ -550,7 +367,30 @@ class _CategoryCard extends StatelessWidget {
               ),
               const SizedBox(height: 10), // Instead of Spacer, use fixed space
               GestureDetector(
-                onTap: () {},
+                onTap: () {
+                  // Extract category from title for navigation
+                  String category = '';
+                  final titleLower = title.toLowerCase();
+                  if (titleLower.contains('appliances') || titleLower.contains('home')) {
+                    category = 'home & kitchen';
+                  } else if (titleLower.contains('electronics') || titleLower.contains('playstation') || titleLower.contains('headphones')) {
+                    category = 'electronics';
+                  } else if (titleLower.contains('fashion') || titleLower.contains('style')) {
+                    category = 'fashion';
+                  } else if (titleLower.contains('automotive')) {
+                    category = 'automotive';
+                  } else if (titleLower.contains('toys') || titleLower.contains('games')) {
+                    category = 'toys & games';
+                  } else if (titleLower.contains('brands')) {
+                    category = 'amazon brands';
+                  } else {
+                    category = 'all';
+                  }
+                  
+                  if (category.isNotEmpty) {
+                    context.push('/category/${Uri.encodeComponent(category)}');
+                  }
+                },
                 child: Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
@@ -664,13 +504,18 @@ class _TechDealsSection extends StatelessWidget {
                           color: Colors.black,
                         ),
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        'See all offers',
-                        style: TextStyle(
-                          color: Color(0xFF007185),
-                          fontSize: 14,
-                          decoration: TextDecoration.underline,
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: () {
+                          context.push('/category/${Uri.encodeComponent('electronics')}');
+                        },
+                        child: Text(
+                          'See all offers',
+                          style: const TextStyle(
+                            color: Color(0xFF007185),
+                            fontSize: 14,
+                            decoration: TextDecoration.underline,
+                          ),
                         ),
                       ),
                     ],

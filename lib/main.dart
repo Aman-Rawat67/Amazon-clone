@@ -6,12 +6,18 @@ import 'providers/auth_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
-import 'screens/customer/home_screen.dart';
+import 'screens/customer/dynamic_home_screen.dart';
+import 'screens/test_dynamic_homepage.dart';
+import 'screens/debug_firestore_screen.dart';
+import 'screens/admin/admin_product_approval_screen.dart';
 import 'screens/customer/product_detail_screen.dart';
+import 'screens/customer/dynamic_home_screen.dart';
 import 'screens/customer/cart_screen.dart';
 import 'screens/customer/checkout_screen.dart';
 import 'screens/customer/orders_screen.dart';
+import 'screens/customer/order_success_screen.dart';
 import 'screens/customer/profile_screen.dart';
+import 'screens/customer/category_products_screen.dart';
 import 'screens/vendor/vendor_dashboard_screen.dart';
 import 'screens/vendor/vendor_products_screen.dart';
 import 'screens/vendor/add_product_screen.dart';
@@ -24,6 +30,7 @@ import 'firebase_options.dart';
 // import 'screens/admin/admin_orders_screen.dart';
 import 'constants/app_constants.dart';
 import 'models/user_model.dart';
+import 'models/order_model.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,8 +58,8 @@ class AmazonCloneApp extends ConsumerWidget {
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(),
-      darkTheme: _buildDarkTheme(),
-      themeMode: ThemeMode.system,
+      darkTheme: _buildTheme(), // Use light theme for dark mode too
+      themeMode: ThemeMode.light, // Force light theme always
       routerConfig: router,
     );
   }
@@ -64,38 +71,100 @@ class AmazonCloneApp extends ConsumerWidget {
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.light,
+        primary: AppColors.primary,
+        secondary: AppColors.secondary,
+        surface: Colors.white,
+        background: const Color(0xFFF5F5F5),
+        onSurface: Colors.black87,
+        onBackground: Colors.black87,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
       ),
+      scaffoldBackgroundColor: const Color(0xFFF5F5F5),
+      cardColor: Colors.white,
       fontFamily: 'AmazonEmber',
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        elevation: 0,
+        elevation: 2,
         centerTitle: false,
+        titleTextStyle: TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'AmazonEmber',
+        ),
+        iconTheme: IconThemeData(color: Colors.white),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.secondary,
           foregroundColor: Colors.white,
+          elevation: 2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
           ),
           minimumSize: const Size(double.infinity, AppDimensions.buttonHeight),
+          textStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'AmazonEmber',
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            fontFamily: 'AmazonEmber',
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+          borderSide: const BorderSide(color: Colors.grey),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+          borderSide: BorderSide(color: Colors.grey.shade400),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppDimensions.paddingMedium,
           vertical: AppDimensions.paddingMedium,
         ),
+        labelStyle: const TextStyle(color: Colors.black87),
+        hintStyle: TextStyle(color: Colors.grey.shade600),
       ),
       cardTheme: CardThemeData(
+        color: Colors.white,
         elevation: AppDimensions.elevationLow,
+        shadowColor: Colors.black26,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusLarge),
         ),
+      ),
+      textTheme: const TextTheme(
+        headlineLarge: TextStyle(color: Colors.black87, fontSize: 32, fontWeight: FontWeight.bold),
+        headlineMedium: TextStyle(color: Colors.black87, fontSize: 28, fontWeight: FontWeight.bold),
+        headlineSmall: TextStyle(color: Colors.black87, fontSize: 24, fontWeight: FontWeight.w600),
+        titleLarge: TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.w600),
+        titleMedium: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.w500),
+        titleSmall: TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.w500),
+        bodyLarge: TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.normal),
+        bodyMedium: TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.normal),
+        bodySmall: TextStyle(color: Colors.black54, fontSize: 12, fontWeight: FontWeight.normal),
+        labelLarge: TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w500),
+        labelMedium: TextStyle(color: Colors.black87, fontSize: 12, fontWeight: FontWeight.w500),
+        labelSmall: TextStyle(color: Colors.black54, fontSize: 11, fontWeight: FontWeight.w500),
       ),
     );
   }
@@ -107,40 +176,67 @@ class AmazonCloneApp extends ConsumerWidget {
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.dark,
-        background: const Color(0xFF23272F), // dark gray
-        surface: const Color(0xFF2C313A), // lighter card/field
+        primary: AppColors.primary,
+        secondary: AppColors.secondary,
+        background: const Color(0xFF1A1A1A), // darker background
+        surface: const Color(0xFF2D2D2D), // lighter card/field
         onBackground: Colors.white,
         onSurface: Colors.white,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
       ),
-      scaffoldBackgroundColor: const Color(0xFF23272F),
-      cardColor: const Color(0xFF2C313A),
+      scaffoldBackgroundColor: const Color(0xFF1A1A1A),
+      cardColor: const Color(0xFF2D2D2D),
       fontFamily: 'AmazonEmber',
       appBarTheme: const AppBarTheme(
         backgroundColor: Color(0xFF232F3E),
         foregroundColor: Colors.white,
-        elevation: 0,
+        elevation: 2,
         centerTitle: false,
+        titleTextStyle: TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'AmazonEmber',
+        ),
+        iconTheme: IconThemeData(color: Colors.white),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.secondary,
           foregroundColor: Colors.white,
+          elevation: 2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
           ),
           minimumSize: const Size(double.infinity, AppDimensions.buttonHeight),
+          textStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'AmazonEmber',
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.amber,
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            fontFamily: 'AmazonEmber',
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFF23272F),
+        fillColor: const Color(0xFF2D2D2D),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
-          borderSide: const BorderSide(color: Colors.white24),
+          borderSide: const BorderSide(color: Colors.white38),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
-          borderSide: const BorderSide(color: Colors.white24),
+          borderSide: const BorderSide(color: Colors.white38),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
@@ -155,26 +251,30 @@ class AmazonCloneApp extends ConsumerWidget {
           vertical: AppDimensions.paddingMedium,
         ),
         labelStyle: const TextStyle(color: Colors.white),
-        hintStyle: const TextStyle(color: Colors.white70),
-        helperStyle: const TextStyle(color: Colors.white60),
+        hintStyle: const TextStyle(color: Colors.white60),
+        helperStyle: const TextStyle(color: Colors.white54),
       ),
       cardTheme: CardThemeData(
-        color: const Color(0xFF2C313A),
+        color: const Color(0xFF2D2D2D),
         elevation: AppDimensions.elevationLow,
+        shadowColor: Colors.black54,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusLarge),
         ),
       ),
       textTheme: const TextTheme(
-        bodyLarge: TextStyle(color: Colors.white),
-        bodyMedium: TextStyle(color: Colors.white),
-        bodySmall: TextStyle(color: Colors.white70),
-        titleLarge: TextStyle(color: Colors.white),
-        titleMedium: TextStyle(color: Colors.white),
-        titleSmall: TextStyle(color: Colors.white70),
-        labelLarge: TextStyle(color: Colors.white),
-        labelMedium: TextStyle(color: Colors.white),
-        labelSmall: TextStyle(color: Colors.white70),
+        headlineLarge: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+        headlineMedium: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+        headlineSmall: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w600),
+        titleLarge: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w600),
+        titleMedium: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w500),
+        titleSmall: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+        bodyLarge: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.normal),
+        bodyMedium: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.normal),
+        bodySmall: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.normal),
+        labelLarge: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+        labelMedium: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+        labelSmall: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
       ),
     );
   }
@@ -260,7 +360,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Customer Routes
       GoRoute(
         path: '/home',
-        builder: (context, state) => const HomeScreen(),
+        builder: (context, state) => const DynamicHomeScreen(),
       ),
       GoRoute(
         path: '/product/:id',
@@ -281,8 +381,34 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const OrdersScreen(),
       ),
       GoRoute(
+        path: '/order-success',
+        builder: (context, state) => OrderSuccessScreen(
+          order: state.extra as OrderModel,
+        ),
+      ),
+      GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+      
+      // Category Products Route
+      GoRoute(
+        path: '/category/:categoryName',
+        builder: (context, state) => CategoryProductsScreen(
+          category: state.pathParameters['categoryName']!,
+        ),
+      ),
+      
+      // Test Route (temporary for testing dynamic homepage)
+      GoRoute(
+        path: '/test-dynamic',
+        builder: (context, state) => const TestDynamicHomepage(),
+      ),
+      
+      // Debug Route (temporary for debugging Firestore data)
+      GoRoute(
+        path: '/debug-firestore',
+        builder: (context, state) => const DebugFirestoreScreen(),
       ),
       
       // Vendor Routes
@@ -306,15 +432,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Admin Routes
       GoRoute(
         path: '/admin',
-        builder: (context, state) => const Scaffold(
-          body: Center(child: Text('Admin Dashboard - Coming Soon')),
-        ),
+        builder: (context, state) => const AdminProductApprovalScreen(),
       ),
       GoRoute(
         path: '/admin/products',
-        builder: (context, state) => const Scaffold(
-          body: Center(child: Text('Manage Products - Coming Soon')),
-        ),
+        builder: (context, state) => const AdminProductApprovalScreen(),
+      ),
+      GoRoute(
+        path: '/admin/approvals',
+        builder: (context, state) => const AdminProductApprovalScreen(),
       ),
       GoRoute(
         path: '/admin/users',

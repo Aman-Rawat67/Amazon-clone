@@ -67,6 +67,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
   
   bool _isLoading = false;
   bool _isActive = true;
+  bool _autoApprove = false; // For testing - auto approve products
   
   // Product Specifications controllers
   List<TextEditingController> _specKeyControllers = [];
@@ -194,13 +195,14 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           style: TextStyle(
             fontSize: AppDimensions.fontLarge,
             fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingSmall),
-        Text(
+        const Text(
           'Enter one or more image URLs (comma separated or one per line). The first image will be the main image.',
           style: TextStyle(
-            color: Colors.grey[600],
+            color: Colors.black87,
             fontSize: AppDimensions.fontSmall,
           ),
         ),
@@ -210,9 +212,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           label: 'Image URLs',
           hint: 'https://example.com/image1.jpg, https://example.com/image2.jpg',
           maxLines: 3,
-          style: const TextStyle(color: Colors.white),
-          hintStyle: const TextStyle(color: Colors.white70),
-          labelStyle: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: Colors.black),
+          hintStyle: const TextStyle(color: Colors.black54),
+          labelStyle: const TextStyle(color: Colors.black87),
         ),
       ],
     );
@@ -227,6 +229,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           style: TextStyle(
             fontSize: AppDimensions.fontLarge,
             fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingMedium),
@@ -241,9 +244,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
             }
             return null;
           },
-          style: const TextStyle(color: Colors.white),
-          hintStyle: const TextStyle(color: Colors.white70),
-          labelStyle: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: Colors.black),
+          hintStyle: const TextStyle(color: Colors.black54),
+          labelStyle: const TextStyle(color: Colors.black87),
         ),
         const SizedBox(height: AppDimensions.paddingMedium),
         
@@ -258,9 +261,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
             }
             return null;
           },
-          style: const TextStyle(color: Colors.white),
-          hintStyle: const TextStyle(color: Colors.white70),
-          labelStyle: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: Colors.black),
+          hintStyle: const TextStyle(color: Colors.black54),
+          labelStyle: const TextStyle(color: Colors.black87),
         ),
       ],
     );
@@ -275,6 +278,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           style: TextStyle(
             fontSize: AppDimensions.fontLarge,
             fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingMedium),
@@ -287,7 +291,10 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                 label: 'Price',
                 hint: '0.00',
                 keyboardType: TextInputType.number,
-                prefix: Text(AppConstants.currencySymbol),
+                prefix: const Text(
+                  AppConstants.currencySymbol,
+                  style: TextStyle(color: Colors.black87),
+                ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Price is required';
@@ -298,9 +305,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                   }
                   return null;
                 },
-                style: const TextStyle(color: Colors.white),
-                hintStyle: const TextStyle(color: Colors.white70),
-                labelStyle: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: Colors.black),
+                hintStyle: const TextStyle(color: Colors.black54),
+                labelStyle: const TextStyle(color: Colors.black87),
               ),
             ),
             const SizedBox(width: AppDimensions.paddingMedium),
@@ -310,7 +317,10 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                 label: 'Original Price (Optional)',
                 hint: '0.00',
                 keyboardType: TextInputType.number,
-                prefix: Text(AppConstants.currencySymbol),
+                prefix: const Text(
+                  AppConstants.currencySymbol,
+                  style: TextStyle(color: Colors.black87),
+                ),
                 validator: (value) {
                   if (value != null && value.trim().isNotEmpty) {
                     final price = double.tryParse(value);
@@ -324,9 +334,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                   }
                   return null;
                 },
-                style: const TextStyle(color: Colors.white),
-                hintStyle: const TextStyle(color: Colors.white70),
-                labelStyle: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: Colors.black),
+                hintStyle: const TextStyle(color: Colors.black54),
+                labelStyle: const TextStyle(color: Colors.black87),
               ),
             ),
           ],
@@ -348,9 +358,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
             }
             return null;
           },
-          style: const TextStyle(color: Colors.white),
-          hintStyle: const TextStyle(color: Colors.white70),
-          labelStyle: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: Colors.black),
+          hintStyle: const TextStyle(color: Colors.black54),
+          labelStyle: const TextStyle(color: Colors.black87),
         ),
       ],
     );
@@ -365,6 +375,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           style: TextStyle(
             fontSize: AppDimensions.fontLarge,
             fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingMedium),
@@ -373,12 +384,16 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           value: _selectedCategory.isNotEmpty ? _selectedCategory : null,
           decoration: const InputDecoration(
             labelText: 'Category',
+            labelStyle: TextStyle(color: Colors.black87),
             border: OutlineInputBorder(),
           ),
           items: categories.map((category) {
             return DropdownMenuItem(
               value: category,
-              child: Text(category),
+              child: Text(
+                category,
+                style: const TextStyle(color: Colors.black),
+              ),
             );
           }).toList(),
           onChanged: (value) {
@@ -401,12 +416,16 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
             value: _selectedSubcategory.isNotEmpty ? _selectedSubcategory : null,
             decoration: const InputDecoration(
               labelText: 'Subcategory',
+              labelStyle: TextStyle(color: Colors.black87),
               border: OutlineInputBorder(),
             ),
             items: subcategories[_selectedCategory]!.map((subcategory) {
               return DropdownMenuItem(
                 value: subcategory,
-                child: Text(subcategory),
+                child: Text(
+                  subcategory,
+                  style: const TextStyle(color: Colors.black),
+                ),
               );
             }).toList(),
             onChanged: (value) {
@@ -434,7 +453,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           style: TextStyle(
             fontSize: AppDimensions.fontLarge,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingSmall),
@@ -442,9 +461,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           controller: _sizesController,
           label: 'Sizes',
           hint: 'e.g. S, M, L, XL',
-          style: const TextStyle(color: Colors.white),
-          hintStyle: const TextStyle(color: Colors.white70),
-          labelStyle: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: Colors.black),
+          hintStyle: const TextStyle(color: Colors.black54),
+          labelStyle: const TextStyle(color: Colors.black87),
         ),
         const SizedBox(height: AppDimensions.paddingLarge),
         const Text(
@@ -452,7 +471,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           style: TextStyle(
             fontSize: AppDimensions.fontLarge,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingSmall),
@@ -460,9 +479,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           controller: _colorsController,
           label: 'Colors',
           hint: 'e.g. Red, Blue, Green',
-          style: const TextStyle(color: Colors.white),
-          hintStyle: const TextStyle(color: Colors.white70),
-          labelStyle: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: Colors.black),
+          hintStyle: const TextStyle(color: Colors.black54),
+          labelStyle: const TextStyle(color: Colors.black87),
         ),
       ],
     );
@@ -477,13 +496,14 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           style: TextStyle(
             fontSize: AppDimensions.fontLarge,
             fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingSmall),
-        Text(
+        const Text(
           'Add tags to help customers find your product',
           style: TextStyle(
-            color: Colors.grey[600],
+            color: Colors.black87,
             fontSize: AppDimensions.fontSmall,
           ),
         ),
@@ -497,6 +517,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                 label: 'Add Tag',
                 hint: 'Enter a tag and press +',
                 onSubmitted: (value) => _addTag(value),
+                style: const TextStyle(color: Colors.black),
+                hintStyle: const TextStyle(color: Colors.black54),
+                labelStyle: const TextStyle(color: Colors.black87),
               ),
             ),
             const SizedBox(width: AppDimensions.paddingSmall),
@@ -524,7 +547,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
 
   Widget _buildTagChip(String tag) {
     return Chip(
-      label: Text(tag),
+      label: Text(tag, style: const TextStyle(color: Colors.black)),
       deleteIcon: const Icon(Icons.close, size: 18),
       onDeleted: () => _removeTag(tag),
     );
@@ -539,6 +562,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           style: TextStyle(
             fontSize: AppDimensions.fontLarge,
             fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingSmall),
@@ -549,9 +573,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                 controller: _specKeyControllers[i],
                 label: 'Key',
                 hint: 'e.g. Brand',
-                style: const TextStyle(color: Colors.white),
-                hintStyle: const TextStyle(color: Colors.white70),
-                labelStyle: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: Colors.black),
+                hintStyle: const TextStyle(color: Colors.black54),
+                labelStyle: const TextStyle(color: Colors.black87),
               ),
             ),
             const SizedBox(width: 8),
@@ -560,9 +584,9 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                 controller: _specValueControllers[i],
                 label: 'Value',
                 hint: 'e.g. Apple',
-                style: const TextStyle(color: Colors.white),
-                hintStyle: const TextStyle(color: Colors.white70),
-                labelStyle: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: Colors.black),
+                hintStyle: const TextStyle(color: Colors.black54),
+                labelStyle: const TextStyle(color: Colors.black87),
               ),
             ),
             IconButton(
@@ -587,8 +611,11 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                 _specValueControllers.add(TextEditingController());
               });
             },
-            icon: const Icon(Icons.add),
-            label: const Text('Add Specification'),
+            icon: const Icon(Icons.add, color: AppColors.primary),
+            label: const Text(
+              'Add Specification',
+              style: TextStyle(color: AppColors.primary),
+            ),
           ),
         ),
       ],
@@ -604,17 +631,41 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           style: TextStyle(
             fontSize: AppDimensions.fontLarge,
             fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingMedium),
         
         SwitchListTile(
-          title: const Text('Active'),
-          subtitle: const Text('Make this product visible to customers'),
+          title: const Text(
+            'Active',
+            style: TextStyle(color: Colors.black),
+          ),
+          subtitle: const Text(
+            'Make this product visible to customers',
+            style: TextStyle(color: Colors.black87),
+          ),
           value: _isActive,
           onChanged: (value) {
             setState(() {
               _isActive = value;
+            });
+          },
+        ),
+        
+        SwitchListTile(
+          title: const Text(
+            'Auto-Approve (Testing)',
+            style: TextStyle(color: Colors.black),
+          ),
+          subtitle: const Text(
+            'Skip admin approval - for testing only',
+            style: TextStyle(color: Colors.black87),
+          ),
+          value: _autoApprove,
+          onChanged: (value) {
+            setState(() {
+              _autoApprove = value;
             });
           },
         ),
@@ -700,7 +751,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
         vendorName: user.name,
         stockQuantity: int.parse(_stockController.text),
         isActive: _isActive,
-        isApproved: false, // New products need admin approval
+        isApproved: _autoApprove, // Auto-approve if testing flag is enabled
         tags: _tags,
         sizes: sizes,
         colors: colors,
@@ -712,8 +763,10 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Product added successfully! Pending admin approval.'),
+          SnackBar(
+            content: Text(_autoApprove 
+                ? 'Product added and auto-approved! Live on homepage now.' 
+                : 'Product added successfully! Pending admin approval.'),
             backgroundColor: Colors.green,
           ),
         );
