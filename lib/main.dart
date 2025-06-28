@@ -13,11 +13,11 @@ import 'screens/customer/checkout_screen.dart';
 import 'screens/customer/orders_screen.dart';
 import 'screens/customer/profile_screen.dart';
 import 'screens/vendor/vendor_dashboard_screen.dart';
-   import 'firebase_options.dart';
+import 'screens/vendor/vendor_products_screen.dart';
+import 'screens/vendor/add_product_screen.dart';
+import 'screens/vendor/vendor_orders_screen.dart';
+import 'firebase_options.dart';
 // TODO: Implement missing screens
-// import 'screens/vendor/add_product_screen.dart';
-// import 'screens/vendor/vendor_products_screen.dart';
-// import 'screens/vendor/vendor_orders_screen.dart';
 // import 'screens/admin/admin_dashboard_screen.dart';
 // import 'screens/admin/manage_products_screen.dart';
 // import 'screens/admin/manage_users_screen.dart';
@@ -107,8 +107,75 @@ class AmazonCloneApp extends ConsumerWidget {
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.dark,
+        background: const Color(0xFF23272F), // dark gray
+        surface: const Color(0xFF2C313A), // lighter card/field
+        onBackground: Colors.white,
+        onSurface: Colors.white,
       ),
+      scaffoldBackgroundColor: const Color(0xFF23272F),
+      cardColor: const Color(0xFF2C313A),
       fontFamily: 'AmazonEmber',
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF232F3E),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.secondary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+          ),
+          minimumSize: const Size(double.infinity, AppDimensions.buttonHeight),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF23272F),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+          borderSide: const BorderSide(color: Colors.white24),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+          borderSide: const BorderSide(color: Colors.white24),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+          borderSide: const BorderSide(color: Colors.amber, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+          borderSide: const BorderSide(color: AppColors.error),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingMedium,
+          vertical: AppDimensions.paddingMedium,
+        ),
+        labelStyle: const TextStyle(color: Colors.white),
+        hintStyle: const TextStyle(color: Colors.white70),
+        helperStyle: const TextStyle(color: Colors.white60),
+      ),
+      cardTheme: CardThemeData(
+        color: const Color(0xFF2C313A),
+        elevation: AppDimensions.elevationLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusLarge),
+        ),
+      ),
+      textTheme: const TextTheme(
+        bodyLarge: TextStyle(color: Colors.white),
+        bodyMedium: TextStyle(color: Colors.white),
+        bodySmall: TextStyle(color: Colors.white70),
+        titleLarge: TextStyle(color: Colors.white),
+        titleMedium: TextStyle(color: Colors.white),
+        titleSmall: TextStyle(color: Colors.white70),
+        labelLarge: TextStyle(color: Colors.white),
+        labelMedium: TextStyle(color: Colors.white),
+        labelSmall: TextStyle(color: Colors.white70),
+      ),
     );
   }
 }
@@ -150,6 +217,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login';
       }
       
+      // If authenticated and vendor, allow any /vendor/* route
+      if (isAuthenticated && user?.role == UserRole.vendor) {
+        if (state.matchedLocation.startsWith('/vendor')) {
+          return null; // Allow vendor to access any vendor route
+        }
+      }
       // If authenticated and trying to access auth screens
       if (isAuthenticated && _isAuthRoute(state.matchedLocation)) {
         // Redirect based on user role
@@ -219,21 +292,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/vendor/products',
-        builder: (context, state) => const Scaffold(
-          body: Center(child: Text('Vendor Products - Coming Soon')),
-        ),
+        builder: (context, state) => const VendorProductsScreen(),
       ),
       GoRoute(
         path: '/vendor/add-product',
-        builder: (context, state) => const Scaffold(
-          body: Center(child: Text('Add Product - Coming Soon')),
-        ),
+        builder: (context, state) => const AddProductScreen(),
       ),
       GoRoute(
         path: '/vendor/orders',
-        builder: (context, state) => const Scaffold(
-          body: Center(child: Text('Vendor Orders - Coming Soon')),
-        ),
+        builder: (context, state) => const VendorOrdersScreen(),
       ),
       
       // Admin Routes

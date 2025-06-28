@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../constants/app_constants.dart';
 import '../../utils/validators.dart';
+import '../../models/user_model.dart';
 import '../../widgets/common/custom_text_field.dart';
 import '../../widgets/common/loading_button.dart';
 import 'package:flutter/foundation.dart';
@@ -24,6 +25,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
   bool _isPasswordVisible = false;
   bool _keepSignedIn = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -166,10 +168,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   // Amazon logo
                   Padding(
                     padding: const EdgeInsets.only(bottom: 24),
-                    child: Image.asset(
-                      'assets/images/amazon_logo.png',
+                    child: Image.network(
+                      'https://via.placeholder.com/200x60/232F3E/FFFFFF?text=Amazon+Clone',
                       height: logoHeight,
                       fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: logoHeight,
+                          width: 200,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF232F3E),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'Amazon Clone',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   Container(
@@ -196,6 +218,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             fontSize: fontSize,
                             fontWeight: FontWeight.w500,
                             letterSpacing: 0.2,
+                            color: Colors.black87,
                           ),
                         ),
                         const SizedBox(height: 18),
@@ -206,7 +229,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             children: [
                               const Text(
                                 'Email or mobile phone number',
-                                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500, 
+                                  fontSize: 15,
+                                  color: Colors.black87,
+                                ),
                               ),
                               const SizedBox(height: 6),
                               TextFormField(
@@ -222,6 +249,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     borderRadius: BorderRadius.circular(3),
                                     borderSide: const BorderSide(color: Color(0xFFD5D9D9)),
                                   ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(3),
+                                    borderSide: const BorderSide(color: Color(0xFFF3A847)),
+                                  ),
                                   isDense: true,
                                 ),
                               ),
@@ -231,7 +262,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 children: [
                                   const Text(
                                     'Password',
-                                    style: TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500, 
+                                      fontSize: 15,
+                                      color: Colors.black87,
+                                    ),
                                   ),
                                   MouseRegion(
                                     cursor: SystemMouseCursors.click,
@@ -265,6 +300,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     borderRadius: BorderRadius.circular(3),
                                     borderSide: const BorderSide(color: Color(0xFFD5D9D9)),
                                   ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(3),
+                                    borderSide: const BorderSide(color: Color(0xFFF3A847)),
+                                  ),
                                   isDense: true,
                                 ),
                               ),
@@ -278,7 +317,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                     visualDensity: VisualDensity.compact,
                                   ),
-                                  const Text('Keep me signed in.', style: TextStyle(fontSize: 14)),
+                                  const Text(
+                                    'Keep me signed in.', 
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
                                   const SizedBox(width: 4),
                                   MouseRegion(
                                     cursor: SystemMouseCursors.click,
@@ -319,6 +364,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       : const Text('Login'),
                                 ),
                               ),
+                              const SizedBox(height: 18),
+                              
+                              // Demo Accounts Section
+                              _buildDemoAccountsSection(),
                             ],
                           ),
                         ),
@@ -335,7 +384,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         Center(
                           child: Text(
                             'New to Amazon?',
-                            style: TextStyle(color: Colors.grey[700], fontSize: 14),
+                            style: TextStyle(color: Colors.black87, fontSize: 14),
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -401,6 +450,130 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDemoAccountsSection() {
+    return Container(
+      padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.blue, size: 20),
+              const SizedBox(width: AppDimensions.paddingSmall),
+              const Text(
+                'Demo Accounts',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppDimensions.paddingSmall),
+          const Text(
+            'Use these accounts for testing:',
+            style: TextStyle(fontSize: AppDimensions.fontSmall),
+          ),
+          const SizedBox(height: AppDimensions.paddingSmall),
+          
+          _buildDemoAccountButton(
+            'Customer Demo',
+            'customer@demo.com',
+            'password123',
+            Icons.shopping_cart,
+            Colors.blue,
+          ),
+          const SizedBox(height: AppDimensions.paddingSmall),
+          _buildDemoAccountButton(
+            'Vendor Demo',
+            'vendor@gmail.com',
+            '12345678',
+            Icons.store,
+            Colors.orange,
+          ),
+          const SizedBox(height: AppDimensions.paddingSmall),
+          _buildDemoAccountButton(
+            'Admin Demo',
+            'admin@demo.com',
+            'password123',
+            Icons.admin_panel_settings,
+            Colors.purple,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDemoAccountButton(
+    String title,
+    String email,
+    String password,
+    IconData icon,
+    Color color,
+  ) {
+    return InkWell(
+      onTap: () => _fillDemoCredentials(email, password),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusSmall),
+      child: Container(
+        padding: const EdgeInsets.all(AppDimensions.paddingSmall),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusSmall),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: AppDimensions.paddingSmall),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: AppDimensions.fontSmall,
+                      color: color,
+                    ),
+                  ),
+                  Text(
+                    email,
+                    style: TextStyle(
+                      fontSize: AppDimensions.fontSmall,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, color: color, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _fillDemoCredentials(String email, String password) {
+    setState(() {
+      _emailController.text = email;
+      _passwordController.text = password;
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Demo credentials filled. Click "Login" to continue.'),
+        backgroundColor: Colors.blue,
+        duration: const Duration(seconds: 2),
       ),
     );
   }

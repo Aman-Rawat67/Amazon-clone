@@ -439,7 +439,6 @@ class FirestoreService {
     try {
       final ordersQuery = await _firestore
           .collection(AppConstants.ordersCollection)
-          .where('items', arrayContains: {'vendorId': vendorId})
           .get();
 
       final productsQuery = await _firestore
@@ -447,23 +446,40 @@ class FirestoreService {
           .where('vendorId', isEqualTo: vendorId)
           .get();
 
-      double totalRevenue = 0;
+      double totalSales = 0;
       int totalOrders = 0;
       int totalProducts = productsQuery.docs.length;
+      double totalRating = 0;
+      int totalReviews = 0;
 
+      // Calculate sales and orders
       for (final doc in ordersQuery.docs) {
         final order = OrderModel.fromJson(doc.data());
-        if (order.status == OrderStatus.delivered) {
-          totalRevenue += order.totalAmount;
+        final vendorItems = order.items.where((item) => item.product.vendorId == vendorId).toList();
+        
+        if (vendorItems.isNotEmpty && order.status == OrderStatus.delivered) {
+          final vendorTotal = vendorItems.fold<double>(
+            0, (sum, item) => sum + (item.product.price * item.quantity));
+          totalSales += vendorTotal;
           totalOrders++;
         }
       }
 
+      // Calculate average rating
+      for (final doc in productsQuery.docs) {
+        final product = ProductModel.fromJson(doc.data());
+        totalRating += product.rating * product.reviewCount;
+        totalReviews += product.reviewCount;
+      }
+
+      final averageRating = totalReviews > 0 ? totalRating / totalReviews : 0.0;
+
       return {
-        'totalRevenue': totalRevenue,
+        'totalSales': totalSales,
         'totalOrders': totalOrders,
         'totalProducts': totalProducts,
-        'averageOrderValue': totalOrders > 0 ? totalRevenue / totalOrders : 0,
+        'averageRating': averageRating,
+        'averageOrderValue': totalOrders > 0 ? totalSales / totalOrders : 0,
       };
     } catch (e) {
       throw Exception('Failed to get vendor analytics: ${e.toString()}');
@@ -559,6 +575,115 @@ class FirestoreService {
       return categories.toList()..sort();
     } catch (e) {
       throw Exception('Failed to get categories: ${e.toString()}');
+    }
+  }
+
+  // VENDOR OPERATIONS
+
+  /// Get vendor products
+  Future<List<ProductModel>> getVendorProducts(String vendorId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection(AppConstants.productsCollection)
+          .where('vendorId', isEqualTo: vendorId)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      return querySnapshot.docs
+          .map((doc) => ProductModel.fromJson(doc.data()))
+          .toList();
+    } catch (e) {
+      throw Exception('Failed to get vendor products: ${e.toString()}');
+    }
+  }
+
+  /// Update product status (active/inactive)
+  Future<void> updateProductStatus(String productId, bool isActive) async {
+    try {
+      await _firestore
+          .collection(AppConstants.productsCollection)
+          .doc(productId)
+          .update({
+        'isActive': isActive,
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
+      });
+    } catch (e) {
+      throw Exception('Failed to update product status: ${e.toString()}');
+    }
+  }
+
+  /// Get vendor orders
+  Future<List<OrderModel>> getVendorOrders(String vendorId) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection(AppConstants.ordersCollection)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      // Filter orders that contain products from this vendor
+      final vendorOrders = <OrderModel>[];
+      
+      for (final doc in querySnapshot.docs) {
+        final order = OrderModel.fromJson(doc.data());
+        final hasVendorItems = order.items.any((item) => item.product.vendorId == vendorId);
+        
+        if (hasVendorItems) {
+          vendorOrders.add(order);
+        }
+      }
+
+      return vendorOrders;
+    } catch (e) {
+      throw Exception('Failed to get vendor orders: ${e.toString()}');
+    }
+  }
+
+  // DEMO ACCOUNT CREATION (FOR TESTING ONLY)
+
+  /// Create demo accounts for testing
+  Future<void> createDemoAccounts() async {
+    try {
+      final demoAccounts = [
+        {
+          'email': 'customer@demo.com',
+          'name': 'Demo Customer',
+          'role': UserRole.customer,
+        },
+        {
+          'email': 'vendor@gmail.com',
+          'name': 'Demo Vendor',
+          'role': UserRole.vendor,
+        },
+        {
+          'email': 'admin@demo.com',
+          'name': 'Demo Admin',
+          'role': UserRole.admin,
+        },
+      ];
+
+      for (final account in demoAccounts) {
+        // Check if account already exists
+        final existingUser = await _firestore
+            .collection(AppConstants.usersCollection)
+            .where('email', isEqualTo: account['email'])
+            .get();
+
+        if (existingUser.docs.isEmpty) {
+          // Create demo user document
+          await _firestore
+              .collection(AppConstants.usersCollection)
+              .add({
+            'email': account['email'],
+            'name': account['name'],
+            'role': (account['role'] as UserRole).name,
+            'isVerified': true,
+            'createdAt': Timestamp.fromDate(DateTime.now()),
+            'lastLoginAt': Timestamp.fromDate(DateTime.now()),
+          });
+        }
+      }
+    } catch (e) {
+      throw Exception('Failed to create demo accounts: ${e.toString()}');
     }
   }
 } 
