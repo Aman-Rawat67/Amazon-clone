@@ -534,31 +534,33 @@ class TopNavBar extends ConsumerWidget {
               ),
               SizedBox(width: isCompact ? 4 : 6),
             ],
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: const Color(0xFF111111),
-                    fontSize: isCompact ? 11 : 12,
-                    height: 1.2,
-                  ),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    subtitle,
+                    title,
                     style: TextStyle(
                       color: const Color(0xFF111111),
-                      fontSize: isCompact ? 12 : 14,
-                      fontWeight: FontWeight.bold,
-                      height: 1.1,
+                      fontSize: isCompact ? 11 : 12,
+                      height: 1.2,
                     ),
                   ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: const Color(0xFF111111),
+                        fontSize: isCompact ? 12 : 14,
+                        fontWeight: FontWeight.bold,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ],
         ),

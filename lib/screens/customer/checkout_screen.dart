@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../constants/app_constants.dart';
 import '../../widgets/common/loading_button.dart';
 import '../../models/order_model.dart';
 import '../../services/firestore_service.dart';
+import '../../services/order_service.dart';
 import '../../models/cart_model.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
@@ -23,13 +27,385 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _zipController = TextEditingController();
   final _phoneController = TextEditingController();
   
-  String _selectedPaymentMethod = 'credit_card';
-  String _selectedNetBanking = '';
   bool _isPlacingOrder = false;
   bool _isSelectingAddress = false;
   String _selectedAddressId = 'address_1';
   
+  // Razorpay integration
+  Razorpay? _razorpay;
+  final _firestoreService = FirestoreService();
+  final _orderService = OrderService();
+  
   final _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeRazorpay();
+  }
+
+  /// Initialize Razorpay instance
+  void _initializeRazorpay() {
+    try {
+      if (kIsWeb) {
+        print('🔥 Running on web - Razorpay initialization skipped');
+        return;
+      }
+      
+      _razorpay = Razorpay();
+      _razorpay?.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
+      _razorpay?.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
+      _razorpay?.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
+      print('🔥 Razorpay initialized successfully');
+    } catch (e) {
+      print('🔥 Error initializing Razorpay: $e');
+    }
+  }
+
+  /// Handle Razorpay payment success
+  void _handlePaymentSuccess(PaymentSuccessResponse response) async {
+    print('🔥 Payment success: ${response.paymentId}');
+    
+    try {
+      setState(() {
+        _isPlacingOrder = true;
+      });
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final cartState = ref.read(cartProvider);
+      final cart = cartState.value;
+      
+      if (cart == null || cart.items.isEmpty) {
+        throw Exception('Cart is empty');
+      }
+
+      // Create shipping address (using default for now)
+      final shippingAddress = _orderService.createDefaultAddress();
+
+      // Create order with Razorpay payment details
+      final order = await _createOrderWithRazorpayPayment(
+        cart.items,
+        shippingAddress,
+        response.paymentId!,
+        cart.totalPrice,
+      );
+
+      print('🔥 Order created successfully: ${order.id}');
+
+      // Clear cart after successful order
+      await _orderService.clearCartAfterOrder(user.uid);
+      
+      // Clear cart provider
+      await ref.read(cartProvider.notifier).clearCart();
+
+      // Navigate to order success screen
+      if (mounted) {
+        try {
+          context.pushReplacement('/order-success');
+        } catch (navigationError) {
+          print('🔥 Navigation error: $navigationError');
+          // Fallback: Go to orders page or home
+          context.pushReplacement('/orders');
+        }
+      }
+    } catch (e) {
+      print('🔥 Error in payment success handler: $e');
+      _showErrorSnackBar('Failed to create order: ${e.toString()}');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPlacingOrder = false;
+        });
+      }
+    }
+  }
+
+  /// Handle Razorpay payment error
+  void _handlePaymentError(PaymentFailureResponse response) {
+    print('🔥 Payment error: ${response.code} - ${response.message}');
+    setState(() {
+      _isPlacingOrder = false;
+    });
+    _showErrorSnackBar('Payment failed: ${response.message ?? 'Unknown error'}');
+  }
+
+  /// Handle external wallet selection
+  void _handleExternalWallet(ExternalWalletResponse response) {
+    print('🔥 External wallet selected: ${response.walletName}');
+    setState(() {
+      _isPlacingOrder = false;
+    });
+    _showErrorSnackBar('External wallet selected: ${response.walletName}');
+  }
+
+  /// Create order with Razorpay payment details
+  Future<OrderModel> _createOrderWithRazorpayPayment(
+    List<CartItem> cartItems,
+    ShippingAddress deliveryAddress,
+    String paymentId,
+    double totalAmount,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User must be logged in');
+
+    // Calculate totals
+    final subtotal = cartItems.fold<double>(
+      0.0, (sum, item) => sum + (item.product.price * item.quantity)
+    );
+    
+    final shippingCost = subtotal >= 100.0 ? 0.0 : 10.0;
+    final tax = subtotal * 0.05; // 5% tax
+    final finalTotal = subtotal + shippingCost + tax;
+
+    // Generate unique order ID and number
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final orderNumber = 'AMZ${timestamp}${user.uid.substring(0, 4).toUpperCase()}';
+
+    // Create OrderModel with Razorpay payment details
+    final order = OrderModel(
+      id: '', // Will be set by FirestoreService
+      userId: user.uid,
+      orderNumber: orderNumber,
+      items: cartItems,
+      subtotal: subtotal,
+      shippingCost: shippingCost,
+      tax: tax,
+      totalAmount: finalTotal,
+      status: OrderStatus.confirmed,
+      paymentStatus: PaymentStatus.paid,
+      paymentMethod: 'razorpay',
+      paymentId: paymentId,
+      shippingAddress: deliveryAddress,
+      tracking: [
+        OrderTracking(
+          status: 'Order Placed',
+          description: 'Your order has been placed successfully',
+          timestamp: DateTime.now(),
+        ),
+      ],
+      createdAt: DateTime.now(),
+    );
+
+    // Save order to Firestore using the proper API
+    final orderId = await _firestoreService.createOrder(order);
+    if (orderId == null || orderId.isEmpty) {
+      throw Exception('Order creation failed: orderId is null or empty');
+    }
+    // Return order with generated ID
+    return order.copyWith(id: orderId);
+  }
+
+  /// Show error snackbar
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  /// Calculate final total including tax and shipping
+  double _calculateFinalTotal(CartModel cart) {
+    final shippingCost = cart.totalPrice >= 100.0 ? 0.0 : 10.0;
+    final tax = cart.totalPrice * 0.05; // 5% tax
+    return cart.totalPrice + shippingCost + tax;
+  }
+
+  /// Show test payment dialog (fallback for web platform)
+  void _showTestPaymentDialog(CartModel cart) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Row(
+          children: [
+            Icon(Icons.payment, color: Colors.blue[600], size: 28),
+            const SizedBox(width: 12),
+            const Text(
+              'Web Payment Simulation',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: Container(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Web Platform Testing',
+                      style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blue),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Razorpay plugin only works on mobile platforms. On web, we simulate the payment process for testing.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildPaymentSummaryRow('Items:', '${cart.items.length}'),
+              _buildPaymentSummaryRow('Subtotal:', '₹${cart.totalPrice.toStringAsFixed(2)}'),
+              _buildPaymentSummaryRow('Shipping:', cart.totalPrice >= 100 ? 'Free' : '₹10.00'),
+              _buildPaymentSummaryRow('Tax (5%):', '₹${(cart.totalPrice * 0.05).toStringAsFixed(2)}'),
+              const Divider(height: 20),
+              _buildPaymentSummaryRow(
+                'Total Amount:', 
+                '₹${_calculateFinalTotal(cart).toStringAsFixed(2)}',
+                isTotal: true,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'On mobile devices, this would open the Razorpay payment gateway.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                _isPlacingOrder = false;
+              });
+            },
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // Simulate successful payment for testing
+              final fakeResponse = PaymentSuccessResponse('web_test_payment_${DateTime.now().millisecondsSinceEpoch}', 'web_test_order_${DateTime.now().millisecondsSinceEpoch}', 'web_test_signature', null);
+              _handlePaymentSuccess(fakeResponse);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[600],
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('✅ Simulate Payment Success'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentSummaryRow(String label, String value, {bool isTotal = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: isTotal ? 16 : 14,
+              fontWeight: isTotal ? FontWeight.w600 : FontWeight.normal,
+              color: isTotal ? Colors.black : Colors.grey[700],
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isTotal ? 16 : 14,
+              fontWeight: isTotal ? FontWeight.w600 : FontWeight.normal,
+              color: isTotal ? Colors.green[700] : Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Initiate Razorpay payment
+  void _initiateRazorpayPayment(CartModel cart) {
+    print('🔥 Place Order button pressed!'); // Debug log
+    
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      print('🔥 Current user: ${user?.email}'); // Debug log
+      
+      if (user == null) {
+        _showErrorSnackBar('Please login to continue');
+        return;
+      }
+
+      if (cart.items.isEmpty) {
+        _showErrorSnackBar('Your cart is empty');
+        return;
+      }
+
+      setState(() {
+        _isPlacingOrder = true;
+      });
+
+      final finalTotal = _calculateFinalTotal(cart);
+      print('🔥 Final total: ₹$finalTotal'); // Debug log
+
+      // Check if running on web platform
+      if (kIsWeb) {
+        print('🔥 Running on web - using test payment dialog');
+        _showTestPaymentDialog(cart);
+        return;
+      }
+
+      // Only use Razorpay on mobile platforms
+      final options = {
+        'key': 'rzp_test_UVwxEu8DrexcG2',
+        'amount': (finalTotal * 100).toInt(), // Amount in paise
+        'name': 'Amazon Clone',
+        'description': 'Order payment for ${cart.items.length} items',
+        'retry': {'enabled': true, 'max_count': 1},
+        'send_sms_hash': true,
+        'prefill': {
+          'contact': '7618447467',
+          'email': user.email ?? 'customer@example.com',
+        },
+        'external': {
+          'wallets': ['paytm']
+        }
+      };
+
+      print('🔥 Opening Razorpay with options: $options'); // Debug log
+      
+      try {
+        _razorpay?.open(options);
+        print('🔥 Razorpay.open() called successfully');
+      } catch (razorpayError) {
+        print('🔥 Razorpay.open() failed: $razorpayError');
+        // Fallback: Show a test payment dialog for debugging
+        _showTestPaymentDialog(cart);
+      }
+    } catch (e) {
+      print('🔥 Error in _initiateRazorpayPayment: $e'); // Debug log
+      setState(() {
+        _isPlacingOrder = false;
+      });
+      _showErrorSnackBar('Failed to initiate payment: ${e.toString()}');
+    }
+  }
 
   @override
   void dispose() {
@@ -38,6 +414,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     _stateController.dispose();
     _zipController.dispose();
     _phoneController.dispose();
+    
+    // Only clear Razorpay if it was initialized (not on web)
+    if (!kIsWeb && _razorpay != null) {
+      try {
+        _razorpay!.clear();
+      } catch (e) {
+        print('🔥 Error clearing Razorpay: $e');
+      }
+    }
+    
     super.dispose();
   }
 
@@ -307,17 +693,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          _buildAvailableBalance(),
-          const SizedBox(height: 24),
-          _buildAnotherPaymentMethod(),
+          _buildRazorpayPaymentMethod(),
         ],
       ),
     );
   }
 
-  Widget _buildAvailableBalance() {
+  Widget _buildRazorpayPaymentMethod() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.grey[50],
         border: Border.all(color: Colors.grey[300]!),
@@ -326,364 +710,68 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Your available balance',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF0F1111),
-            ),
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: kIsWeb ? Colors.orange[600] : const Color(0xFF3395FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  kIsWeb ? Icons.web : Icons.payment,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      kIsWeb ? 'Web Payment Simulation' : 'Pay securely with Razorpay',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF0F1111),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      kIsWeb 
+                          ? 'Test payment flow for web platform development'
+                          : 'Supports Credit/Debit Cards, Net Banking, UPI & Wallets',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF565959),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              const Icon(Icons.add, size: 16, color: Color(0xFF565959)),
+              Icon(
+                kIsWeb ? Icons.info_outline : Icons.security, 
+                size: 16, 
+                color: kIsWeb ? Colors.orange[600] : const Color(0xFF007185)
+              ),
               const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.grey[300]!),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'Enter Code',
-                    style: TextStyle(
-                      color: Color(0xFF565959),
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  border: Border.all(color: Colors.grey[300]!),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'Apply',
-                  style: TextStyle(
-                    color: Color(0xFF0F1111),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAnotherPaymentMethod() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Another payment method',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF0F1111),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildCreditCardOption(),
-        const SizedBox(height: 16),
-        _buildNetBankingOption(),
-        const SizedBox(height: 16),
-        _buildUPIOption(),
-        const SizedBox(height: 16),
-        _buildEMIOption(),
-        const SizedBox(height: 16),
-        _buildCODOption(),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFD814),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              elevation: 0,
-            ),
-            child: const Text(
-              'Use this payment method',
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.w500,
-                fontSize: 14,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCreditCardOption() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: _selectedPaymentMethod == 'credit_card' 
-              ? const Color(0xFF007185) 
-              : Colors.grey[300]!,
-          width: _selectedPaymentMethod == 'credit_card' ? 2 : 1,
-        ),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Radio<String>(
-                value: 'credit_card',
-                groupValue: _selectedPaymentMethod,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedPaymentMethod = value!;
-                  });
-                },
-                activeColor: const Color(0xFF007185),
-              ),
-              const Text(
-                'Credit or debit card',
+              Text(
+                kIsWeb 
+                    ? 'Web testing mode - payment will be simulated'
+                    : 'Secure payment powered by Razorpay',
                 style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF0F1111),
+                  fontSize: 12,
+                  color: kIsWeb ? Colors.orange[600] : const Color(0xFF007185),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          // Payment method icons
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildPaymentIcon('VISA', 'assets/icons/visa.png'),
-              _buildPaymentIcon('MASTERCARD', 'assets/icons/mastercard.png'),
-              _buildPaymentIcon('AMEX', 'assets/icons/amex.png'),
-              _buildPaymentIcon('DINERS', 'assets/icons/diners.png'),
-              _buildPaymentIcon('DISCOVER', 'assets/icons/discover.png'),
-              _buildPaymentIcon('RUPAY', 'assets/icons/rupay.png'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentIcon(String name, String imagePath) {
-    return Container(
-      width: 40,
-      height: 24,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Center(
-        child: Image.asset(
-          imagePath,
-          width: 30,
-          height: 18,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) => Text(
-            name,
-            style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNetBankingOption() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: _selectedPaymentMethod == 'net_banking' 
-              ? const Color(0xFF007185) 
-              : Colors.grey[300]!,
-          width: _selectedPaymentMethod == 'net_banking' ? 2 : 1,
-        ),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Radio<String>(
-                value: 'net_banking',
-                groupValue: _selectedPaymentMethod,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedPaymentMethod = value!;
-                  });
-                },
-                activeColor: const Color(0xFF007185),
-              ),
-              const Text(
-                'Net Banking',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF0F1111),
-                ),
-              ),
-            ],
-          ),
-          if (_selectedPaymentMethod == 'net_banking') ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                border: Border.all(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedNetBanking.isEmpty ? null : _selectedNetBanking,
-                  hint: const Text('Choose an Option'),
-                  isExpanded: true,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedNetBanking = value!;
-                    });
-                  },
-                  items: ['SBI', 'HDFC', 'ICICI', 'Axis Bank', 'Other Banks']
-                      .map((bank) => DropdownMenuItem(
-                            value: bank,
-                            child: Text(bank),
-                          ))
-                      .toList(),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUPIOption() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: _selectedPaymentMethod == 'upi' 
-              ? const Color(0xFF007185) 
-              : Colors.grey[300]!,
-          width: _selectedPaymentMethod == 'upi' ? 2 : 1,
-        ),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Radio<String>(
-            value: 'upi',
-            groupValue: _selectedPaymentMethod,
-            onChanged: (value) {
-              setState(() {
-                _selectedPaymentMethod = value!;
-              });
-            },
-            activeColor: const Color(0xFF007185),
-          ),
-          const Text(
-            'Other UPI Apps',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF0F1111),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEMIOption() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.grey[50],
-      ),
-      child: Row(
-        children: [
-          Radio<String>(
-            value: 'emi',
-            groupValue: null, // Disabled
-            onChanged: null,
-            activeColor: Colors.grey,
-          ),
-          const Text(
-            'EMI',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF565959),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCODOption() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.grey[50],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Radio<String>(
-                value: 'cod',
-                groupValue: null, // Disabled
-                onChanged: null,
-                activeColor: Colors.grey,
-              ),
-              const Text(
-                'Cash on Delivery/Pay on Delivery',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF565959),
-                ),
-              ),
-            ],
-          ),
-          const Padding(
-            padding: EdgeInsets.only(left: 40),
-            child: Text(
-              'Unavailable for this payment',
-              style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFF565959),
-              ),
-            ),
           ),
         ],
       ),
@@ -737,34 +825,77 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextButton(
-                onPressed: () {},
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  alignment: Alignment.centerLeft,
-                ),
-                child: const Text(
-                  'Use this payment method',
-                  style: TextStyle(
-                    color: Color(0xFF007185),
-                    fontSize: 14,
+              // Place Order Button
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                child: Material(
+                  color: _isPlacingOrder ? Colors.grey.shade300 : const Color(0xFFFFD814),
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    onTap: _isPlacingOrder ? null : () {
+                      print('🔥 Button tapped!'); // Debug log
+                      print('🔥 Cart items count: ${cart.items.length}');
+                      print('🔥 Cart total: ₹${cart.totalPrice}');
+                      
+                      // Add small delay to ensure the tap is registered
+                      Future.delayed(const Duration(milliseconds: 50), () {
+                        _initiateRazorpayPayment(cart);
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      child: _isPlacingOrder
+                          ? const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text(
+                                  'Processing...',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : const Text(
+                              'Place Order',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              const Row(
+              Row(
                 children: [
-                  Text(
+                  const Text(
                     'Items:',
                     style: TextStyle(
                       fontSize: 14,
                       color: Color(0xFF0F1111),
                     ),
                   ),
-                  Spacer(),
+                  const Spacer(),
                   Text(
-                    '--',
-                    style: TextStyle(
+                    '₹${cart.totalPrice.toStringAsFixed(2)}',
+                    style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF0F1111),
                     ),
@@ -772,39 +903,39 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Row(
+              Row(
                 children: [
-                  Text(
+                  const Text(
                     'Delivery:',
                     style: TextStyle(
                       fontSize: 14,
                       color: Color(0xFF0F1111),
                     ),
                   ),
-                  Spacer(),
+                  const Spacer(),
                   Text(
-                    '--',
+                    cart.totalPrice >= 100 ? 'Free' : '₹10.00',
                     style: TextStyle(
                       fontSize: 14,
-                      color: Color(0xFF0F1111),
+                      color: cart.totalPrice >= 100 ? const Color(0xFF007600) : const Color(0xFF0F1111),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              const Row(
+              Row(
                 children: [
-                  Text(
-                    'Total:',
+                  const Text(
+                    'Tax:',
                     style: TextStyle(
                       fontSize: 14,
                       color: Color(0xFF0F1111),
                     ),
                   ),
-                  Spacer(),
+                  const Spacer(),
                   Text(
-                    '--',
-                    style: TextStyle(
+                    '₹${(cart.totalPrice * 0.05).toStringAsFixed(2)}',
+                    style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF0F1111),
                     ),
@@ -846,10 +977,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   ),
                   const Spacer(),
                   Text(
-                    '₹${cart.totalPrice.toInt().toString().replaceAllMapped(
-                      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-                      (Match m) => '${m[1]},',
-                    )}.00',
+                    '₹${_calculateFinalTotal(cart).toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -1840,3 +1968,4 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
   }
 }
+
