@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../../models/product_model.dart';
 import '../../models/cart_model.dart';
 import '../../models/order_model.dart';
@@ -10,7 +13,10 @@ import '../../providers/cart_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../services/order_service.dart';
 import '../../widgets/common/order_confirmation_dialog.dart';
+import '../../widgets/common/optimized_action_button.dart';
+import '../../widgets/common/quantity_selector.dart';
 import '../../constants/app_constants.dart';
+import '../../services/razorpay_web_service.dart';
 
 /// Complete product detail screen with Firebase Firestore integration
 /// Styled like Amazon's product page with dynamic data fetching
@@ -35,14 +41,307 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   ProductModel? _cachedProduct;
   late Future<ProductModel?> _productFuture;
 
+  // Razorpay integration
+  Razorpay? _razorpay;
+  final _orderService = OrderService();
+
+  // Add RazorpayWebService
+  final _razorpayWebService = RazorpayWebService();
+
   @override
   void initState() {
     super.initState();
     _productFuture = _firestoreService.getProduct(widget.productId);
+    _initializeRazorpay();
+  }
+
+  /// Initialize Razorpay instance
+  void _initializeRazorpay() {
+    try {
+      if (kIsWeb) {
+        print('🔥 Running on web - Razorpay initialization skipped');
+        return;
+      }
+      
+      _razorpay = Razorpay();
+      _razorpay?.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
+      _razorpay?.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
+      _razorpay?.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
+      print('🔥 Razorpay initialized successfully');
+    } catch (e) {
+      print('🔥 Error initializing Razorpay: $e');
+    }
+  }
+
+  /// Handle Razorpay payment success
+  void _handlePaymentSuccess(PaymentSuccessResponse response) async {
+    print('🔥 Payment success: ${response.paymentId}');
+    
+    try {
+      setState(() {
+        _isBuyingNow = true;
+      });
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get current quantity
+      final quantity = QuantitySelector.globalQuantity;
+      
+      // Create cart item for this product
+      final cartItem = CartItem(
+        id: '${widget.productId}_${_selectedColor ?? 'default'}_${null}',
+        productId: widget.productId,
+        product: _cachedProduct!,
+        quantity: quantity,
+        selectedColor: _selectedColor,
+        selectedSize: null,
+        addedAt: DateTime.now(),
+      );
+
+      // Create shipping address
+      final shippingAddress = _orderService.createDefaultAddress();
+
+      // Create order with Razorpay payment details
+      final order = await _createOrderWithRazorpayPayment(
+        [cartItem],
+        shippingAddress,
+        response.paymentId!,
+        _cachedProduct!.price * quantity,
+      );
+
+      print('🔥 Order created successfully: ${order.id}');
+
+      // Navigate to order success screen
+      if (mounted) {
+        try {
+          if (order.id.isEmpty) {
+            throw Exception('Order ID is empty');
+          }
+          context.goNamed('order_success', extra: order);
+        } catch (navigationError) {
+          print('🔥 Navigation error: $navigationError');
+          // Fallback: Go to orders page or home
+          context.go('/home/orders');
+        }
+      }
+    } catch (e) {
+      print('🔥 Error in payment success handler: $e');
+      _showErrorSnackBar('Failed to create order: ${e.toString()}');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBuyingNow = false;
+        });
+      }
+    }
+  }
+
+  /// Handle Razorpay payment error
+  void _handlePaymentError(PaymentFailureResponse response) {
+    print('🔥 Payment error: ${response.code} - ${response.message}');
+    setState(() {
+      _isBuyingNow = false;
+    });
+    _showErrorSnackBar('Payment failed: ${response.message ?? 'Unknown error'}');
+  }
+
+  /// Handle external wallet selection
+  void _handleExternalWallet(ExternalWalletResponse response) {
+    print('🔥 External wallet selected: ${response.walletName}');
+    setState(() {
+      _isBuyingNow = false;
+    });
+    _showErrorSnackBar('External wallet selected: ${response.walletName}');
+  }
+
+  /// Create order with Razorpay payment details
+  Future<OrderModel> _createOrderWithRazorpayPayment(
+    List<CartItem> cartItems,
+    ShippingAddress deliveryAddress,
+    String paymentId,
+    double totalAmount,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User must be logged in');
+
+    // Calculate totals
+    final subtotal = cartItems.fold<double>(
+      0.0, (sum, item) => sum + (item.product.price * item.quantity)
+    );
+    
+    final shippingCost = subtotal >= 100.0 ? 0.0 : 10.0;
+    final tax = subtotal * 0.05; // 5% tax
+    final finalTotal = subtotal + shippingCost + tax;
+
+    // Generate unique order ID and number
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final orderNumber = 'AMZ${timestamp}${user.uid.substring(0, 4).toUpperCase()}';
+
+    // Create OrderModel with Razorpay payment details
+    final order = OrderModel(
+      id: '', // Will be set by FirestoreService
+      userId: user.uid,
+      orderNumber: orderNumber,
+      items: cartItems,
+      subtotal: subtotal,
+      shippingCost: shippingCost,
+      tax: tax,
+      totalAmount: finalTotal,
+      status: OrderStatus.confirmed,
+      paymentStatus: PaymentStatus.paid,
+      paymentMethod: 'razorpay',
+      paymentId: paymentId,
+      shippingAddress: deliveryAddress,
+      tracking: [
+        OrderTracking(
+          status: 'Order Placed',
+          description: 'Your order has been placed successfully',
+          timestamp: DateTime.now(),
+        ),
+      ],
+      createdAt: DateTime.now(),
+    );
+
+    // Save order to Firestore
+    final orderId = await _orderService.createOrder(order);
+    if (orderId == null || orderId.isEmpty) {
+      throw Exception('Order creation failed: orderId is null or empty');
+    }
+    // Return order with generated ID
+    return order.copyWith(id: orderId);
+  }
+
+  /// Show error snackbar
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  /// Show test payment dialog (fallback for web platform)
+  void _showTestPaymentDialog(CartItem cartItem) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Row(
+          children: [
+            Icon(Icons.payment, color: Colors.blue[600], size: 28),
+            const SizedBox(width: 12),
+            const Text(
+              'Web Payment Simulation',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: Container(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Product: ${cartItem.product.name}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Quantity: ${cartItem.quantity}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Total: ₹${(cartItem.product.price * cartItem.quantity).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFB12704),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'On mobile devices, this would open the Razorpay payment gateway.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                _isBuyingNow = false;
+              });
+            },
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // Simulate successful payment for testing
+              final fakeResponse = PaymentSuccessResponse(
+                'web_test_payment_${DateTime.now().millisecondsSinceEpoch}',
+                'web_test_order_${DateTime.now().millisecondsSinceEpoch}',
+                'web_test_signature',
+                null,
+              );
+              _handlePaymentSuccess(fakeResponse);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[600],
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('✅ Simulate Payment Success'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   void dispose() {
+    // Clear Razorpay instances
+    if (!kIsWeb && _razorpay != null) {
+      try {
+        _razorpay!.clear();
+      } catch (e) {
+        print('🔥 Error clearing Razorpay: $e');
+      }
+    }
+    if (kIsWeb) {
+      _razorpayWebService.cleanup();
+    }
     _imagePageController.dispose();
     super.dispose();
   }
@@ -51,7 +350,14 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF2F2F2),
-      appBar: _buildAppBar(context),
+      appBar: AppBar(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        leading: BackButton(
+          onPressed: () => context.go('/home'),
+        ),
+        title: const Text('Product Details'),
+      ),
       body: FutureBuilder<ProductModel?>(
         future: _productFuture,
         builder: (context, snapshot) {
@@ -127,7 +433,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.shopping_cart, color: Colors.white),
-                  onPressed: () => context.push('/cart'),
+                  onPressed: () => context.push('/home/cart'),
                 ),
                 if (cartItemCount > 0)
                   Positioned(
@@ -1644,7 +1950,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     isLoading: _isAddingToCart,
                     style: OptimizedButtonStyle.outlined,
                     icon: Icons.shopping_cart_outlined,
-                    label: 'Add to Cart',
+                    text: 'Add to Cart',
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -1657,7 +1963,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     isLoading: _isBuyingNow,
                     style: OptimizedButtonStyle.filled,
                     icon: Icons.flash_on,
-                    label: 'Buy Now',
+                    text: 'Buy Now',
                   ),
                 ),
               ],
@@ -1707,7 +2013,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             action: SnackBarAction(
               label: 'View Cart',
               textColor: Colors.white,
-              onPressed: () => context.push('/cart'),
+              onPressed: () => context.go('/home/cart'),
             ),
           ),
         );
@@ -1746,14 +2052,17 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Future<void> _handleBuyNow(ProductModel product) async {
     if (_isBuyingNow) return;
 
-    setState(() {
-      _isBuyingNow = true;
-    });
-
     try {
-      // Import the order service and dialog
-      final OrderService orderService = OrderService();
-      
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        _showErrorSnackBar('Please login to continue');
+        return;
+      }
+
+      setState(() {
+        _isBuyingNow = true;
+      });
+
       // Get current quantity
       final quantity = QuantitySelector.globalQuantity;
       
@@ -1767,117 +2076,68 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         selectedSize: null,
         addedAt: DateTime.now(),
       );
-      
-      // Calculate pricing
+
+      // Calculate final total
       final subtotal = product.price * quantity;
       final shippingCost = subtotal >= 100.0 ? 0.0 : 10.0;
       final tax = subtotal * 0.05; // 5% tax
-      final totalAmount = subtotal + shippingCost + tax;
-      
-      // Get default address for demo
-      final deliveryAddress = orderService.createDefaultAddress();
-      
-      if (mounted) {
-        // Show confirmation dialog
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => OrderConfirmationDialog(
-            items: [cartItem],
-            deliveryAddress: deliveryAddress,
-            paymentMode: 'Cash on Delivery',
-            subtotal: subtotal,
-            shippingCost: shippingCost,
-            tax: tax,
-            totalAmount: totalAmount,
-            onConfirm: () async {
-              Navigator.of(context).pop();
-              await _placeOrder(orderService, product, quantity, deliveryAddress);
-            },
-            onCancel: () {
-              Navigator.of(context).pop();
-            },
-          ),
+      final finalTotal = subtotal + shippingCost + tax;
+
+      // Handle web platform
+      if (kIsWeb) {
+        final result = await _razorpayWebService.initiatePayment(
+          amount: finalTotal,
+          description: 'Payment for ${product.name}',
+          userEmail: user.email ?? '',
+          userPhone: '7618447467',
+          userName: user.displayName,
         );
+
+        if (result['success']) {
+          // Create fake response for web
+          final fakeResponse = PaymentSuccessResponse(
+            result['paymentId'],
+            result['orderId'],
+            result['signature'],
+            null,
+          );
+          _handlePaymentSuccess(fakeResponse);
+        } else {
+          _showErrorSnackBar('Payment failed: ${result['message']}');
+          setState(() {
+            _isBuyingNow = false;
+          });
+        }
+        return;
       }
+
+      // Mobile platform - use Razorpay Flutter SDK
+      if (_razorpay == null) {
+        throw Exception('Razorpay not initialized');
+      }
+
+      // Create Razorpay options
+      final options = {
+        'key': AppConstants.razorpayApiKey,
+        'amount': (finalTotal * 100).toInt(), // Amount in paise
+        'name': AppConstants.appName,
+        'description': 'Payment for ${product.name}',
+        'prefill': {
+          'contact': '7618447467',
+          'email': user.email ?? '',
+        },
+        'external': {
+          'wallets': ['paytm']
+        }
+      };
+
+      _razorpay?.open(options);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Failed to proceed: ${e.toString()}',
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBuyingNow = false;
-        });
-      }
-    }
-  }
-
-  /// Place the order after confirmation
-  Future<void> _placeOrder(
-    OrderService orderService,
-    ProductModel product,
-    int quantity,
-    ShippingAddress deliveryAddress,
-  ) async {
-    try {
-      // Show loading
-      if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const Center(
-            child: CircularProgressIndicator(color: Color(0xFFFF9900)),
-          ),
-        );
-      }
-
-      // Create order
-      final order = await orderService.createOrderFromProduct(
-        product: product,
-        quantity: quantity,
-        selectedColor: _selectedColor,
-        deliveryAddress: deliveryAddress,
-        paymentMode: 'Cash on Delivery',
-      );
-
-      // Hide loading
-      if (mounted) {
-        Navigator.of(context).pop();
-        
-        // Navigate to success screen
-        context.go('/order-success', extra: order);
-      }
-    } catch (e) {
-      // Hide loading
-      if (mounted) {
-        Navigator.of(context).pop();
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to place order: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      print('🔥 Error handling buy now: $e');
+      _showErrorSnackBar('Failed to process payment: ${e.toString()}');
+      setState(() {
+        _isBuyingNow = false;
+      });
     }
   }
 
@@ -2048,12 +2308,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     return GestureDetector(
       onTap: () {
         // Navigate to product detail screen
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ProductDetailScreen(productId: product.id),
-          ),
-        );
+        context.push('/product/${product.id}');
       },
       child: Container(
         width: 180,
@@ -2198,263 +2453,5 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         ),
       ),
     );
-  }
-}
-
-/// Modern Light-Themed Quantity Selector Widget
-class QuantitySelector extends StatefulWidget {
-  final void Function(int quantity) onQuantityChanged;
-  
-  const QuantitySelector({
-    super.key,
-    required this.onQuantityChanged,
-  });
-
-  // Global state for quantity to avoid rebuilding entire screen
-  static int globalQuantity = 1;
-
-  @override
-  State<QuantitySelector> createState() => _QuantitySelectorState();
-}
-
-class _QuantitySelectorState extends State<QuantitySelector> {
-  int _quantity = QuantitySelector.globalQuantity;
-
-  void _updateQuantity(int newQuantity) {
-    setState(() {
-      _quantity = newQuantity;
-      QuantitySelector.globalQuantity = newQuantity;
-    });
-    widget.onQuantityChanged(newQuantity);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quantity:',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F5F5),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _quantity > 1
-                            ? () => _updateQuantity(_quantity - 1)
-                            : null,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(8),
-                          bottomLeft: Radius.circular(8),
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12, 
-                            vertical: 8
-                          ),
-                          child: Icon(
-                            Icons.remove,
-                            size: 18,
-                            color: _quantity > 1 
-                                ? Colors.black87 
-                                : Colors.grey[400],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16, 
-                        vertical: 8
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.symmetric(
-                          vertical: BorderSide(color: Colors.grey.shade300),
-                        ),
-                      ),
-                      child: Text(
-                        _quantity.toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _updateQuantity(_quantity + 1),
-                        borderRadius: const BorderRadius.only(
-                          topRight: Radius.circular(8),
-                          bottomRight: Radius.circular(8),
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12, 
-                            vertical: 8
-                          ),
-                          child: const Icon(
-                            Icons.add,
-                            size: 18,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                _quantity > 1 ? 'items selected' : 'item selected',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Optimized Action Button Styles
-enum OptimizedButtonStyle { filled, outlined }
-
-/// Optimized Action Button Widget
-class OptimizedActionButton extends StatelessWidget {
-  final VoidCallback? onPressed;
-  final bool isLoading;
-  final OptimizedButtonStyle style;
-  final IconData icon;
-  final String label;
-
-  const OptimizedActionButton({
-    super.key,
-    required this.onPressed,
-    required this.isLoading,
-    required this.style,
-    required this.icon,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isEnabled = onPressed != null && !isLoading;
-    
-    switch (style) {
-      case OptimizedButtonStyle.filled:
-        return ElevatedButton(
-          onPressed: isEnabled ? onPressed : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF9900),
-            foregroundColor: Colors.black,
-            disabledBackgroundColor: Colors.grey[300],
-            disabledForegroundColor: Colors.grey[600],
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            elevation: isEnabled ? 4 : 0,
-            shadowColor: const Color(0xFFFF9900).withOpacity(0.3),
-          ),
-          child: isLoading
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
-                  ),
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(icon, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-        );
-        
-      case OptimizedButtonStyle.outlined:
-        return OutlinedButton(
-          onPressed: isEnabled ? onPressed : null,
-          style: OutlinedButton.styleFrom(
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black87,
-            disabledBackgroundColor: Colors.grey[100],
-            disabledForegroundColor: Colors.grey[400],
-            side: BorderSide(
-              color: isEnabled ? Colors.grey[400]! : Colors.grey[300]!,
-              width: 1.5,
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            elevation: isEnabled ? 2 : 0,
-          ),
-          child: isLoading
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.black87),
-                  ),
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(icon, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-        );
-    }
   }
 }

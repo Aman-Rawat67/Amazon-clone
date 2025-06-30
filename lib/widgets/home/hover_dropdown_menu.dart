@@ -15,7 +15,7 @@ class HoverDropdownItem {
 class HoverDropdownMenu extends StatefulWidget {
   final Widget trigger;
   final List<HoverDropdownItem> menuItems;
-  final double? menuWidth;
+  final double menuWidth;
   final double? menuHeight;
   final EdgeInsets? menuPadding;
   final Offset? offset;
@@ -24,7 +24,7 @@ class HoverDropdownMenu extends StatefulWidget {
     super.key,
     required this.trigger,
     required this.menuItems,
-    this.menuWidth,
+    this.menuWidth = 250,
     this.menuHeight,
     this.menuPadding,
     this.offset,
@@ -54,7 +54,7 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
       builder: (context) => _DropdownOverlay(
         layerLink: _layerLink,
         menuItems: widget.menuItems,
-        menuWidth: widget.menuWidth ?? 250,
+        menuWidth: widget.menuWidth,
         menuHeight: widget.menuHeight,
         menuPadding: widget.menuPadding,
         offset: widget.offset ?? const Offset(0, 8),

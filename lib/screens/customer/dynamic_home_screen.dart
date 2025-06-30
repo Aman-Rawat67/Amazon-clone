@@ -6,8 +6,11 @@ import '../../providers/product_provider.dart';
 import '../../models/product_section_model.dart';
 import '../../models/product_model.dart';
 import '../../constants/app_constants.dart';
+import '../../constants/filter_constants.dart';
 import '../../widgets/home/top_nav_bar.dart';
 import '../../widgets/home/category_nav_bar.dart';
+import '../../widgets/home/category_filter_widget.dart';
+import '../../widgets/home/sort_filter_widget.dart';
 import 'product_detail_screen.dart';
 
 /// Dynamic Amazon-style homepage that fetches sections from Firebase
@@ -17,19 +20,112 @@ class DynamicHomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isMobile = MediaQuery.of(context).size.width < 700;
+    final filters = ref.watch(productFiltersProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F3F3),
       body: CustomScrollView(
         slivers: [
           // Main navigation with logo, search, account, cart
-          SliverToBoxAdapter(child: TopNavBar()),
+          const SliverToBoxAdapter(child: TopNavBar()),
           
           // Unified category navigation 
-          SliverToBoxAdapter(child: CategoryNavBar()),
+          const SliverToBoxAdapter(child: CategoryNavBar()),
+          
+          // Filter and sort options
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isMobile)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              const CategoryFilterWidget(),
+                              const SizedBox(width: 16),
+                              SortFilterWidget(
+                                onSortChanged: (SortOption newSort) {
+                                  ref.read(productFiltersProvider.notifier).updateSortBy(newSort);
+                                },
+                                onPriceRangeChanged: (double? min, double? max) {
+                                  ref.read(productFiltersProvider.notifier).updatePriceRange(min, max);
+                                },
+                                onRatingChanged: (double? rating) {
+                                  ref.read(productFiltersProvider.notifier).updateRating(rating);
+                                },
+                                selectedSort: filters.sortBy,
+                                selectedPriceRange: RangeValues(
+                                  filters.minPrice ?? 0,
+                                  filters.maxPrice ?? 10000,
+                                ),
+                                selectedRating: filters.minRating ?? 0,
+                              ),
+                              const SizedBox(width: 16),
+                              if (filters.category != null ||
+                                  filters.sortBy != SortOption.newest ||
+                                  filters.minPrice != null ||
+                                  filters.maxPrice != null ||
+                                  filters.minRating != null)
+                                TextButton.icon(
+                                  onPressed: () {
+                                    ref.read(productFiltersProvider.notifier).resetFilters();
+                                  },
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Reset Filters'),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        const CategoryFilterWidget(),
+                        const SizedBox(width: 8),
+                        SortFilterWidget(
+                          onSortChanged: (SortOption newSort) {
+                            ref.read(productFiltersProvider.notifier).updateSortBy(newSort);
+                          },
+                          onPriceRangeChanged: (double? min, double? max) {
+                            ref.read(productFiltersProvider.notifier).updatePriceRange(min, max);
+                          },
+                          onRatingChanged: (double? rating) {
+                            ref.read(productFiltersProvider.notifier).updateRating(rating);
+                          },
+                          selectedSort: filters.sortBy,
+                          selectedPriceRange: RangeValues(
+                            filters.minPrice ?? 0,
+                            filters.maxPrice ?? 10000,
+                          ),
+                          selectedRating: filters.minRating ?? 0,
+                        ),
+                        const SizedBox(width: 8),
+                        if (filters.category != null ||
+                            filters.sortBy != SortOption.newest ||
+                            filters.minPrice != null ||
+                            filters.maxPrice != null ||
+                            filters.minRating != null)
+                          TextButton.icon(
+                            onPressed: () {
+                              ref.read(productFiltersProvider.notifier).resetFilters();
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Reset Filters'),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
           
           // Hero banner section
-          SliverToBoxAdapter(child: _HeroBanner()),
+          const SliverToBoxAdapter(child: _HeroBanner()),
           
           // Spacing after hero
           const SliverToBoxAdapter(
@@ -91,11 +187,29 @@ class _DynamicProductSections extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sectionsAsyncValue = ref.watch(productSectionsStreamProvider);
+    final filteredProductsAsyncValue = ref.watch(filteredProductsProvider);
 
     return sectionsAsyncValue.when(
       loading: () => _buildLoadingState(),
       error: (error, stack) => _buildErrorState(context, error, ref),
-      data: (sections) => _buildProductSections(context, sections),
+      data: (sections) {
+        return filteredProductsAsyncValue.when(
+          loading: () => _buildLoadingState(),
+          error: (error, stack) => _buildErrorState(context, error, ref),
+          data: (filteredProducts) {
+            // Update sections with filtered products
+            final updatedSections = sections.map((section) {
+              return section.copyWith(
+                products: section.products.where((product) {
+                  return filteredProducts.any((p) => p.id == product.id);
+                }).toList(),
+              );
+            }).toList();
+
+            return _buildProductSections(context, updatedSections);
+          },
+        );
+      },
     );
   }
 
@@ -505,7 +619,7 @@ class _DynamicProductSections extends ConsumerWidget {
   }
 }
 
-/// Widget for individual product section card
+/// Widget for displaying a product section card
 class _ProductSectionCard extends StatelessWidget {
   final ProductSection section;
 
@@ -513,162 +627,107 @@ class _ProductSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.15),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Section header
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
+    return Card(
+      elevation: 2,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Section header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  section.title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF232F3E),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        section.title,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (section.subtitle != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          section.subtitle!,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                if (section.subtitle != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    section.subtitle!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                if (section.seeMoreText != null)
+                  TextButton(
+                    onPressed: () => _navigateToSeeMore(context),
+                    child: Text(section.seeMoreText!),
                   ),
-                ],
               ],
             ),
-          ),
-          // Products grid
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _buildProductsGrid(),
-            ),
-          ),
-          // See more button
-          if (section.seeMoreText != null)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: GestureDetector(
-                onTap: () => _handleSeeMore(context),
-                child: Text(
-                  section.seeMoreText!,
-                  style: const TextStyle(
-                    color: Color(0xFF007185),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+            const SizedBox(height: 16),
+
+            // Products grid
+            Expanded(
+              child: GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: isMobile ? 2 : 2,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 0.8,
                 ),
+                itemCount: section.displayProducts.length,
+                itemBuilder: (context, index) {
+                  final product = section.displayProducts[index];
+                  return _ProductCard(product: product);
+                },
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  /// Build products grid (2x2)
-  Widget _buildProductsGrid() {
-    if (!section.hasProducts) {
-      return _buildEmptyProductsState();
-    }
-
-    final products = section.displayProducts;
-    
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 8,
-      mainAxisSpacing: 8,
-      childAspectRatio: 0.85,
-      children: products.asMap().entries.map((entry) {
-        final product = entry.value;
-        return _ProductCard(product: product);
-      }).toList(),
-    );
-  }
-
-  /// Build empty products state
-  Widget _buildEmptyProductsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.inventory_2_outlined,
-            size: 48,
-            color: Colors.grey[400],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'No products available',
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Handle see more button tap
-  void _handleSeeMore(BuildContext context) {
+  void _navigateToSeeMore(BuildContext context) {
     if (section.seeMoreRoute != null) {
       context.push(section.seeMoreRoute!);
     } else {
-      // Default action - determine category from section title or use first product's category
+      // Extract category from section title or first product
       String category = '';
       if (section.hasProducts && section.products.isNotEmpty) {
         category = section.products.first.category;
       } else {
-        // Fallback: try to extract category from section title
+        // Try to extract category from section title
         final title = section.title.toLowerCase();
         if (title.contains('electronics')) {
-          category = 'electronics';
+          category = 'Electronics';
         } else if (title.contains('fashion')) {
-          category = 'fashion';
+          category = 'Fashion';
         } else if (title.contains('home') || title.contains('kitchen')) {
-          category = 'home & kitchen';
+          category = 'Home & Kitchen';
         } else if (title.contains('books')) {
-          category = 'books';
+          category = 'Books';
         } else if (title.contains('sports')) {
-          category = 'sports';
+          category = 'Sports';
         } else {
-          category = 'all'; // fallback
+          category = 'All'; // fallback
         }
       }
-      
-      if (category.isNotEmpty) {
-        context.push('/category/${Uri.encodeComponent(category)}');
-      }
+
+      // Navigate to category products screen
+      context.push('/category/${Uri.encodeComponent(category.toLowerCase())}');
     }
   }
 }
 
-/// Widget for individual product card
+/// Widget for displaying a product card within a section
 class _ProductCard extends StatelessWidget {
   final ProductModel product;
 
@@ -676,277 +735,140 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _navigateToProduct(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Product image
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: Colors.grey[200]!,
-                  width: 1,
-                ),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: _buildProductImage(),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Product details
-          _buildProductDetails(),
-        ],
-      ),
-    );
-  }
-
-  /// Build product image with error handling
-  Widget _buildProductImage() {
-    final imageUrl = product.imageUrls.isNotEmpty ? product.imageUrls.first : null;
-    
-    if (imageUrl == null) {
-      return _buildPlaceholderImage();
-    }
-
-    return Image.network(
-      imageUrl,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Center(
-          child: CircularProgressIndicator(
-            value: loadingProgress.expectedTotalBytes != null
-                ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                : null,
-            strokeWidth: 2,
-            valueColor: const AlwaysStoppedAnimation<Color>(Colors.orange),
-          ),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
-    );
-  }
-
-  /// Build placeholder image
-  Widget _buildPlaceholderImage() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      color: Colors.grey[200],
-      child: Icon(
-        Icons.image_not_supported_outlined,
-        size: 32,
-        color: Colors.grey[400],
-      ),
-    );
-  }
-
-  /// Build product details section
-  Widget _buildProductDetails() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          product.name,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF232F3E),
-          ),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        const SizedBox(height: 2),
-        Row(
+    return Card(
+      elevation: 1,
+      child: InkWell(
+        onTap: () => context.go('/product/${product.id}'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '${AppConstants.currencySymbol}${product.price.toStringAsFixed(0)}',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFFB12704),
-              ),
-            ),
-            if (product.hasDiscount) ...[
-              const SizedBox(width: 4),
-              Text(
-                '${AppConstants.currencySymbol}${product.originalPrice!.toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontSize: 10,
-                  decoration: TextDecoration.lineThrough,
-                  color: Colors.grey[600],
+            // Product image
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(4),
+                  ),
+                ),
+                child: Image.network(
+                  product.imageUrls.first,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Colors.grey[200],
+                      child: const Center(
+                        child: Icon(Icons.image_not_supported, color: Colors.grey),
+                      ),
+                    );
+                  },
                 ),
               ),
-            ],
+            ),
+
+            // Product info
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.star, size: 16, color: Colors.amber),
+                      Text(
+                        ' ${product.rating.toStringAsFixed(1)}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '₹${product.price.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
-        if (product.rating > 0) ...[
-          const SizedBox(height: 2),
-          Row(
-            children: [
-              Icon(
-                Icons.star,
-                size: 12,
-                color: Colors.orange[700],
-              ),
-              const SizedBox(width: 2),
-              Text(
-                '${product.rating.toStringAsFixed(1)} (${product.reviewCount})',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  /// Navigate to product detail screen
-  void _navigateToProduct(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ProductDetailScreen(productId: product.id),
       ),
     );
   }
 }
 
-/// Hero banner widget
+/// Hero banner section at the top of the home screen
 class _HeroBanner extends StatelessWidget {
+  const _HeroBanner();
+
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 768;
-    
     return Container(
-      height: isMobile ? 180 : 200,
-      decoration: BoxDecoration(
+      height: 400,
+      decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            const Color(0xFF232F3E),
-            const Color(0xFF131A22),
-          ],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF232F3E),
+            Color(0xFF37475A),
+          ],
         ),
       ),
-      child: Stack(
-        children: [
-          // Background pattern
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0.05,
-              child: Container(
-                decoration: BoxDecoration(
-                  image: DecorationImage(
-                    image: NetworkImage('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="1" fill="white"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>'),
-                    repeat: ImageRepeat.repeat,
-                  ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Welcome to Amazon Clone',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Shop millions of products at great prices',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.white70,
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: () => context.push('/home/category/all'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                foregroundColor: Colors.black87,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
+              ),
+              child: const Text(
+                'Start Shopping',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-          ),
-          
-          // Main content
-          Positioned.fill(
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: isMobile ? 16 : 24,
-                vertical: 24,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Welcome text
-                  Text(
-                    'Welcome to Amazon Clone',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isMobile ? 24 : 32,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  
-                  SizedBox(height: isMobile ? 8 : 12),
-                  
-                  // Subtitle
-                  Text(
-                    'Discover millions of products with fast delivery',
-                    style: TextStyle(
-                      color: Colors.grey[300],
-                      fontSize: isMobile ? 14 : 18,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  
-                  SizedBox(height: isMobile ? 16 : 24),
-                  
-                                     // CTA Button
-                   ElevatedButton(
-                      onPressed: () {
-                        // Scroll to products or navigate to deals
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF9900),
-                        foregroundColor: Colors.black,
-                        elevation: 0,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isMobile ? 20 : 32,
-                          vertical: isMobile ? 12 : 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Text(
-                        'Shop Now',
-                        style: TextStyle(
-                          fontSize: isMobile ? 14 : 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          
-          // Decorative elements
-          if (!isMobile) ...[
-            Positioned(
-              right: 40,
-              top: 30,
-              child: Icon(
-                Icons.shopping_bag_outlined,
-                size: 80,
-              color: Colors.white.withOpacity(0.1),
-              ),
-            ),
-            Positioned(
-              right: 20,
-              bottom: 20,
-              child: Icon(
-                Icons.local_shipping_outlined,
-                size: 60,
-              color: Colors.white.withOpacity(0.08),
-              ),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }
-} 
+}

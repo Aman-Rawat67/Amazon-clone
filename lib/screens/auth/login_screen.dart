@@ -47,7 +47,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
       
       if (mounted) {
-        // Navigation is handled by the router based on user role
+        // Check if there's a redirect parameter
+        final redirectTo = GoRouterState.of(context).uri.queryParameters['redirect'];
+        if (redirectTo != null && redirectTo.isNotEmpty) {
+          context.go(redirectTo);
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Login successful!'),
@@ -79,6 +84,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(userProvider.notifier).signInWithGoogle();
       
       if (mounted) {
+        // Check if there's a redirect parameter
+        final redirectTo = GoRouterState.of(context).uri.queryParameters['redirect'];
+        if (redirectTo != null && redirectTo.isNotEmpty) {
+          context.go(redirectTo);
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Login successful!'),

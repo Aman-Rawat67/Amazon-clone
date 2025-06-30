@@ -3,6 +3,7 @@ import '../models/cart_model.dart';
 import '../models/product_model.dart';
 import '../services/firestore_service.dart';
 import '../services/auth_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Service class for handling order operations and Buy Now functionality
 class OrderService {
@@ -12,6 +13,7 @@ class OrderService {
 
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// Create order from single product (Buy Now from Product Detail)
   Future<OrderModel> createOrderFromProduct({
@@ -187,5 +189,23 @@ class OrderService {
     }
     
     return true;
+  }
+
+  /// Creates a new order in Firestore and returns the order ID
+  Future<String> createOrder(OrderModel order) async {
+    try {
+      // Create a new document reference
+      final orderRef = _firestore.collection('orders').doc();
+      
+      // Set the order ID
+      final orderWithId = order.copyWith(id: orderRef.id);
+      
+      // Save the order to Firestore
+      await orderRef.set(orderWithId.toJson());
+      
+      return orderRef.id;
+    } catch (e) {
+      throw Exception('Failed to create order: $e');
+    }
   }
 } 

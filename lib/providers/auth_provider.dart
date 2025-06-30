@@ -294,7 +294,7 @@ final isCustomerProvider = Provider<bool>((ref) {
   );
 });
 
-/// Provider for getting user ID
+/// Provider for current user ID
 final userIdProvider = Provider<String?>((ref) {
   final user = ref.watch(userProvider);
   return user.when(
@@ -302,4 +302,4 @@ final userIdProvider = Provider<String?>((ref) {
     loading: () => null,
     error: (_, __) => null,
   );
-}); 
+});

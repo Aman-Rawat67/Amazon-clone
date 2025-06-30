@@ -207,4 +207,64 @@ class ProductModel {
         price.hashCode ^
         vendorId.hashCode;
   }
+
+  factory ProductModel.fromMap(Map<String, dynamic> map, [String? id]) {
+    return ProductModel(
+      id: id ?? map['id'] as String,
+      name: map['name'] as String,
+      description: map['description'] as String,
+      price: (map['price'] as num).toDouble(),
+      originalPrice: map['originalPrice'] != null 
+          ? (map['originalPrice'] as num).toDouble() 
+          : null,
+      category: map['category'] as String,
+      subcategory: map['subcategory'] as String,
+      imageUrls: List<String>.from(map['imageUrls'] ?? []),
+      vendorId: map['vendorId'] as String,
+      vendorName: map['vendorName'] as String,
+      stockQuantity: map['stockQuantity'] as int,
+      isActive: map['isActive'] as bool? ?? true,
+      isApproved: map['isApproved'] as bool? ?? false,
+      rating: (map['rating'] as num?)?.toDouble() ?? 0.0,
+      reviewCount: map['reviewCount'] as int? ?? 0,
+      specifications: Map<String, dynamic>.from(map['specifications'] ?? {}),
+      tags: List<String>.from(map['tags'] ?? []),
+      createdAt: (map['createdAt'] as Timestamp).toDate(),
+      updatedAt: map['updatedAt'] != null
+          ? (map['updatedAt'] as Timestamp).toDate()
+          : null,
+      shippingInfo: map['shippingInfo'] as Map<String, dynamic>?,
+      colors: List<String>.from(map['colors'] ?? []),
+      sizes: List<String>.from(map['sizes'] ?? []),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'price': price,
+      'originalPrice': originalPrice,
+      'category': category,
+      'subcategory': subcategory,
+      'imageUrls': imageUrls,
+      'vendorId': vendorId,
+      'vendorName': vendorName,
+      'stockQuantity': stockQuantity,
+      'isActive': isActive,
+      'isApproved': isApproved,
+      'rating': rating,
+      'reviewCount': reviewCount,
+      'specifications': specifications,
+      'tags': tags,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': updatedAt != null 
+          ? Timestamp.fromDate(updatedAt!) 
+          : null,
+      'shippingInfo': shippingInfo,
+      'colors': colors,
+      'sizes': sizes,
+    };
+  }
 } 

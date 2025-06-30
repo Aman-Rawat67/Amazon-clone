@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../models/cart_model.dart';
 import '../../models/order_model.dart';
 import '../../models/product_model.dart';
 import '../../services/order_service.dart';
 import '../../widgets/common/order_confirmation_dialog.dart';
+import '../../constants/app_constants.dart';
+import '../../widgets/common/loading_button.dart';
+import '../../services/razorpay_web_service.dart';
 
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
@@ -17,29 +24,460 @@ class CartScreen extends ConsumerStatefulWidget {
 
 class _CartScreenState extends ConsumerState<CartScreen> {
   bool _isUpdating = false;
+  bool _isUpdatingQuantity = false;
+  bool _isBuyingNow = false;
+  
+  // Razorpay integration
+  Razorpay? _razorpay;
+  final _orderService = OrderService();
+  final _razorpayWebService = RazorpayWebService();
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeRazorpay();
+  }
+
+  /// Initialize Razorpay instance
+  void _initializeRazorpay() {
+    try {
+      if (kIsWeb) {
+        print('🔥 Running on web - Razorpay initialization skipped');
+        return;
+      }
+      
+      _razorpay = Razorpay();
+      _razorpay?.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
+      _razorpay?.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
+      _razorpay?.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
+      print('🔥 Razorpay initialized successfully');
+    } catch (e) {
+      print('🔥 Error initializing Razorpay: $e');
+    }
+  }
+
+  /// Handle Razorpay payment success
+  void _handlePaymentSuccess(PaymentSuccessResponse response) async {
+    print('🔥 Payment success: ${response.paymentId}');
+    
+    try {
+      setState(() {
+        _isBuyingNow = true;
+      });
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final cartState = ref.read(cartProvider);
+      final cart = cartState.value;
+      
+      if (cart == null || cart.items.isEmpty) {
+        throw Exception('Cart is empty');
+      }
+
+      // Create shipping address
+      final shippingAddress = _orderService.createDefaultAddress();
+
+      // Create order with Razorpay payment details
+      final order = await _createOrderWithRazorpayPayment(
+        cart.items,
+        shippingAddress,
+        response.paymentId!,
+        cart.totalPrice,
+      );
+
+      print('🔥 Order created successfully: ${order.id}');
+
+      // Clear cart after successful order
+      await _orderService.clearCartAfterOrder(user.uid);
+      
+      // Clear cart provider
+      await ref.read(cartProvider.notifier).clearCart();
+
+      // Navigate to order success screen
+      if (mounted) {
+        try {
+          if (order.id.isEmpty) {
+            throw Exception('Order ID is empty');
+          }
+          context.go('/home/order-success', extra: order);
+        } catch (navigationError) {
+          print('🔥 Navigation error: $navigationError');
+          // Fallback: Go to orders page or home
+          context.go('/home/orders');
+        }
+      }
+    } catch (e) {
+      print('🔥 Error in payment success handler: $e');
+      _showErrorSnackBar('Failed to create order: ${e.toString()}');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBuyingNow = false;
+        });
+      }
+    }
+  }
+
+  /// Handle Razorpay payment error
+  void _handlePaymentError(PaymentFailureResponse response) {
+    print('🔥 Payment error: ${response.code} - ${response.message}');
+    setState(() {
+      _isBuyingNow = false;
+    });
+    _showErrorSnackBar('Payment failed: ${response.message ?? 'Unknown error'}');
+  }
+
+  /// Handle external wallet selection
+  void _handleExternalWallet(ExternalWalletResponse response) {
+    print('🔥 External wallet selected: ${response.walletName}');
+    setState(() {
+      _isBuyingNow = false;
+    });
+    _showErrorSnackBar('External wallet selected: ${response.walletName}');
+  }
+
+  /// Create order with Razorpay payment details
+  Future<OrderModel> _createOrderWithRazorpayPayment(
+    List<CartItem> cartItems,
+    ShippingAddress deliveryAddress,
+    String paymentId,
+    double totalAmount,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User must be logged in');
+
+    // Calculate totals
+    final subtotal = cartItems.fold<double>(
+      0.0, (sum, item) => sum + (item.product.price * item.quantity)
+    );
+    
+    final shippingCost = subtotal >= 100.0 ? 0.0 : 10.0;
+    final tax = subtotal * 0.05; // 5% tax
+    final finalTotal = subtotal + shippingCost + tax;
+
+    // Generate unique order ID and number
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final orderNumber = 'AMZ${timestamp}${user.uid.substring(0, 4).toUpperCase()}';
+
+    // Create OrderModel with Razorpay payment details
+    final order = OrderModel(
+      id: '', // Will be set by FirestoreService
+      userId: user.uid,
+      orderNumber: orderNumber,
+      items: cartItems,
+      subtotal: subtotal,
+      shippingCost: shippingCost,
+      tax: tax,
+      totalAmount: finalTotal,
+      status: OrderStatus.confirmed,
+      paymentStatus: PaymentStatus.paid,
+      paymentMethod: 'razorpay',
+      paymentId: paymentId,
+      shippingAddress: deliveryAddress,
+      tracking: [
+        OrderTracking(
+          status: 'Order Placed',
+          description: 'Your order has been placed successfully',
+          timestamp: DateTime.now(),
+        ),
+      ],
+      createdAt: DateTime.now(),
+    );
+
+    // Save order to Firestore
+    final orderId = await _orderService.createOrder(order);
+    if (orderId == null || orderId.isEmpty) {
+      throw Exception('Order creation failed: orderId is null or empty');
+    }
+    // Return order with generated ID
+    return order.copyWith(id: orderId);
+  }
+
+  /// Show error snackbar
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  /// Show test payment dialog (fallback for web platform)
+  void _showTestPaymentDialog(CartModel cart) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Row(
+          children: [
+            Icon(Icons.payment, color: Colors.blue[600], size: 28),
+            const SizedBox(width: 12),
+            const Text(
+              'Web Payment Simulation',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: Container(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Items: ${cart.items.length}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Total: ₹${cart.totalPrice.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFB12704),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'On mobile devices, this would open the Razorpay payment gateway.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                _isBuyingNow = false;
+              });
+            },
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // Simulate successful payment for testing
+              final fakeResponse = PaymentSuccessResponse(
+                'web_test_payment_${DateTime.now().millisecondsSinceEpoch}',
+                'web_test_order_${DateTime.now().millisecondsSinceEpoch}',
+                'web_test_signature',
+                null,
+              );
+              _handlePaymentSuccess(fakeResponse);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[600],
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('✅ Simulate Payment Success'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Handle buy now action
+  Future<void> _handleBuyNow(CartModel cart) async {
+    if (_isBuyingNow) return;
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        _showErrorSnackBar('Please login to continue');
+        return;
+      }
+
+      if (cart.items.isEmpty) {
+        _showErrorSnackBar('Your cart is empty');
+        return;
+      }
+
+      setState(() {
+        _isBuyingNow = true;
+      });
+
+      // Calculate final total
+      final subtotal = cart.totalPrice;
+      final shippingCost = subtotal >= 100.0 ? 0.0 : 10.0;
+      final tax = subtotal * 0.05; // 5% tax
+      final finalTotal = subtotal + shippingCost + tax;
+
+      // Handle web platform
+      if (kIsWeb) {
+        final result = await _razorpayWebService.initiatePayment(
+          amount: finalTotal,
+          description: 'Payment for ${cart.items.length} items',
+          userEmail: user.email ?? '',
+          userPhone: '7618447467',
+          userName: user.displayName,
+        );
+
+        if (result['success']) {
+          // Create fake response for web
+          final fakeResponse = PaymentSuccessResponse(
+            result['paymentId'],
+            result['orderId'],
+            result['signature'],
+            null,
+          );
+          _handlePaymentSuccess(fakeResponse);
+        } else {
+          _showErrorSnackBar('Payment failed: ${result['message']}');
+          setState(() {
+            _isBuyingNow = false;
+          });
+        }
+        return;
+      }
+
+      // Mobile platform - use Razorpay Flutter SDK
+      if (_razorpay == null) {
+        throw Exception('Razorpay not initialized');
+      }
+
+      // Create Razorpay options
+      final options = {
+        'key': AppConstants.razorpayApiKey,
+        'amount': (finalTotal * 100).toInt(), // Amount in paise
+        'name': AppConstants.appName,
+        'description': 'Payment for ${cart.items.length} items',
+        'prefill': {
+          'contact': '7618447467',
+          'email': user.email ?? '',
+        },
+        'external': {
+          'wallets': ['paytm']
+        }
+      };
+
+      _razorpay?.open(options);
+    } catch (e) {
+      print('🔥 Error handling buy now: $e');
+      _showErrorSnackBar('Failed to process payment: ${e.toString()}');
+      setState(() {
+        _isBuyingNow = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    // Clear Razorpay instances
+    if (!kIsWeb && _razorpay != null) {
+      try {
+        _razorpay!.clear();
+      } catch (e) {
+        print('🔥 Error clearing Razorpay: $e');
+      }
+    }
+    if (kIsWeb) {
+      _razorpayWebService.cleanup();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final cartAsync = ref.watch(cartProvider);
+    final authState = ref.watch(authStreamProvider);
     final isWeb = MediaQuery.of(context).size.width > 768;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F7F7),
-      appBar: _buildAppBar(),
-      body: cartAsync.when(
-        data: (cart) {
-          if (cart == null || cart.items.isEmpty) {
-            return _buildEmptyCart();
-          }
-          
-          if (isWeb) {
-            return _buildWebLayout(cart);
-          } else {
-            return _buildMobileLayout(cart);
-          }
-        },
-        loading: () => _buildLoadingState(),
-        error: (error, stack) => _buildErrorState(error.toString()),
+    // Check authentication first
+    return authState.when(
+      data: (user) {
+        if (user == null) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF7F7F7),
+            appBar: _buildAppBar(),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.account_circle_outlined,
+                    size: 64,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Please sign in to view your cart',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => context.go('/auth/login'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF9900),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    ),
+                    child: const Text('Sign In'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF7F7F7),
+          appBar: _buildAppBar(),
+          body: cartAsync.when(
+            data: (cart) {
+              if (cart == null || cart.items.isEmpty) {
+                return _buildEmptyCart();
+              }
+              
+              if (isWeb) {
+                return _buildWebLayout(cart);
+              } else {
+                return _buildMobileLayout(cart);
+              }
+            },
+            loading: () => _buildLoadingState(),
+            error: (error, stack) => _buildErrorState(error.toString()),
+          ),
+        );
+      },
+      loading: () => const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFFFF9900)),
+        ),
+      ),
+      error: (error, stack) => Scaffold(
+        backgroundColor: const Color(0xFFF7F7F7),
+        appBar: _buildAppBar(),
+        body: _buildErrorState(error.toString()),
       ),
     );
   }
@@ -51,7 +489,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () => Navigator.pop(context),
+        onPressed: () => context.go('/home'),
       ),
       title: const Text(
         'Shopping Cart',
@@ -768,14 +1206,16 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           // Proceed to Checkout Button
           SizedBox(
             width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () => context.push('/checkout'),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF007185)),
+            child: ElevatedButton(
+              onPressed: () => context.go('/home/checkout'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF9900),
+                foregroundColor: Colors.black,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
+                elevation: 2,
               ),
               child: const Text(
                 'Proceed to Checkout',
@@ -1226,117 +1666,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to add item: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
-  }
-
-  /// Handle buy now action from cart
-  Future<void> _handleBuyNow(CartModel cart) async {
-    if (cart.items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Your cart is empty'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    try {
-      final OrderService orderService = OrderService();
-      
-      // Calculate pricing
-      final subtotal = cart.subtotal;
-      final shippingCost = cart.shipping;
-      final tax = subtotal * 0.05; // 5% tax
-      final totalAmount = subtotal + shippingCost + tax;
-      
-      // Get default address for demo
-      final deliveryAddress = orderService.createDefaultAddress();
-      
-      if (mounted) {
-        // Show confirmation dialog
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => OrderConfirmationDialog(
-            items: cart.items,
-            deliveryAddress: deliveryAddress,
-            paymentMode: 'Cash on Delivery',
-            subtotal: subtotal,
-            shippingCost: shippingCost,
-            tax: tax,
-            totalAmount: totalAmount,
-            onConfirm: () async {
-              Navigator.of(context).pop();
-              await _placeOrderFromCart(orderService, cart.items, deliveryAddress);
-            },
-            onCancel: () {
-              Navigator.of(context).pop();
-            },
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to proceed: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
-  }
-
-  /// Place order from cart items
-  Future<void> _placeOrderFromCart(
-    OrderService orderService,
-    List<CartItem> cartItems,
-    ShippingAddress deliveryAddress,
-  ) async {
-    try {
-      // Show loading
-      if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const Center(
-            child: CircularProgressIndicator(color: Color(0xFFFF9900)),
-          ),
-        );
-      }
-
-      // Create order from cart
-      final order = await orderService.createOrderFromCart(
-        cartItems: cartItems,
-        deliveryAddress: deliveryAddress,
-        paymentMode: 'Cash on Delivery',
-      );
-
-      // Clear cart after successful order
-      await orderService.clearCartAfterOrder(order.userId);
-
-      // Hide loading
-      if (mounted) {
-        Navigator.of(context).pop();
-        
-        // Navigate to success screen
-        context.go('/order-success', extra: order);
-      }
-    } catch (e) {
-      // Hide loading
-      if (mounted) {
-        Navigator.of(context).pop();
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to place order: ${e.toString()}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),

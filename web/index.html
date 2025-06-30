@@ -18,7 +18,10 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Amazon Clone - A Flutter E-commerce App">
+
+  <!-- Google Sign-In Client ID -->
+  <meta name="google-signin-client_id" content="YOUR_GOOGLE_SIGN_IN_CLIENT_ID.apps.googleusercontent.com">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,8 +32,70 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>amazon_clone</title>
+  <title>Amazon Clone</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Razorpay SDK -->
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+  <!-- Custom JavaScript for Razorpay Web Integration -->
+  <script>
+    // Initialize Razorpay handler
+    let razorpayHandler = null;
+
+    // Function to handle Razorpay payment
+    function initializeRazorpayPayment(options, onSuccess, onError) {
+      try {
+        // Create new Razorpay instance
+        razorpayHandler = new Razorpay({
+          key: options.key,
+          amount: options.amount,
+          currency: options.currency || 'INR',
+          name: options.name,
+          description: options.description,
+          image: options.image,
+          prefill: options.prefill,
+          theme: {
+            color: '#FF9900'
+          },
+          handler: function(response) {
+            // Call Flutter success callback
+            onSuccess({
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature
+            });
+          },
+          modal: {
+            ondismiss: function() {
+              // Call Flutter error callback
+              onError({
+                code: 'PAYMENT_CANCELLED',
+                message: 'Payment was cancelled by the user'
+              });
+            }
+          }
+        });
+
+        // Open Razorpay checkout
+        razorpayHandler.open();
+      } catch (error) {
+        // Call Flutter error callback
+        onError({
+          code: 'RAZORPAY_ERROR',
+          message: error.message || 'Failed to initialize Razorpay'
+        });
+      }
+    }
+
+    // Function to cleanup Razorpay instance
+    function cleanupRazorpay() {
+      if (razorpayHandler) {
+        razorpayHandler.close();
+        razorpayHandler = null;
+      }
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

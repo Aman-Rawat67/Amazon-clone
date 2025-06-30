@@ -131,7 +131,7 @@ class ProfileScreen extends ConsumerWidget {
                   icon: Icons.location_on,
                   title: 'Addresses',
                   subtitle: 'Manage your delivery addresses',
-                  onTap: () => _showAddressesScreen(context),
+                  onTap: () => context.go('/addresses'),
                 ),
                 
                 _buildProfileOption(
@@ -333,37 +333,7 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   void _showAddressesScreen(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: const Text('My Addresses'),
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-          ),
-          body: const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.location_on_outlined, size: 100, color: Colors.grey),
-                SizedBox(height: AppDimensions.paddingMedium),
-                Text('No addresses found'),
-                SizedBox(height: AppDimensions.paddingSmall),
-                Text('Add an address to get started'),
-              ],
-            ),
-          ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: () {
-              // Add address logic
-            },
-            backgroundColor: AppColors.primary,
-            child: const Icon(Icons.add, color: Colors.white),
-          ),
-        ),
-      ),
-    );
+    context.push('/addresses');
   }
 
   void _showPaymentMethodsScreen(BuildContext context) {
@@ -401,165 +371,15 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   void _showNotificationSettings(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: const Text('Notification Settings'),
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-            children: [
-              SwitchListTile(
-                title: const Text('Push Notifications'),
-                subtitle: const Text('Receive notifications about orders and updates'),
-                value: true,
-                onChanged: (value) {
-                  // Update notification preference
-                },
-              ),
-              SwitchListTile(
-                title: const Text('Email Notifications'),
-                subtitle: const Text('Receive email updates about your orders'),
-                value: true,
-                onChanged: (value) {
-                  // Update email preference
-                },
-              ),
-              SwitchListTile(
-                title: const Text('Promotional Offers'),
-                subtitle: const Text('Receive notifications about deals and offers'),
-                value: false,
-                onChanged: (value) {
-                  // Update promotional preference
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    context.push('/notifications');
   }
 
   void _showHelpScreen(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: const Text('Help & Support'),
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-            children: [
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.question_answer),
-                  title: const Text('FAQ'),
-                  subtitle: const Text('Frequently asked questions'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    // Navigate to FAQ
-                  },
-                ),
-              ),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.chat),
-                  title: const Text('Live Chat'),
-                  subtitle: const Text('Chat with our support team'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    // Start live chat
-                  },
-                ),
-              ),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.email),
-                  title: const Text('Email Support'),
-                  subtitle: const Text('Send us an email'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    // Open email client
-                  },
-                ),
-              ),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.phone),
-                  title: const Text('Call Support'),
-                  subtitle: const Text('+1 (555) 123-4567'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    // Make phone call
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    context.push('/help');
   }
 
   void _showPrivacyPolicy(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: const Text('Privacy Policy'),
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-          ),
-          body: const SingleChildScrollView(
-            padding: EdgeInsets.all(AppDimensions.paddingMedium),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Privacy Policy',
-                  style: TextStyle(
-                    fontSize: AppDimensions.fontTitle,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: AppDimensions.paddingMedium),
-                Text(
-                  'Last updated: January 2024',
-                  style: TextStyle(color: Colors.grey),
-                ),
-                SizedBox(height: AppDimensions.paddingLarge),
-                Text(
-                  'Your privacy is important to us. This privacy policy explains how we collect, use, and protect your information when you use our app.',
-                  style: TextStyle(height: 1.5),
-                ),
-                SizedBox(height: AppDimensions.paddingMedium),
-                Text(
-                  'Information We Collect',
-                  style: TextStyle(
-                    fontSize: AppDimensions.fontMedium,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: AppDimensions.paddingSmall),
-                Text(
-                  '• Personal information (name, email, phone number)\n• Order and purchase history\n• Device information and usage data\n• Location data (with your permission)',
-                  style: TextStyle(height: 1.5),
-                ),
-                // Add more privacy policy content here
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    context.push('/privacy-policy');
   }
 
   void _showAboutDialog(BuildContext context) {
@@ -593,12 +413,12 @@ class ProfileScreen extends ConsumerWidget {
         content: const Text('Are you sure you want to logout?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => context.pop(),
             child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context);
+              context.pop();
               await ref.read(userProvider.notifier).signOut();
               if (context.mounted) {
                 context.go('/login');

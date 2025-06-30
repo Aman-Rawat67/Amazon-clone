@@ -55,46 +55,40 @@ class TopNavBar extends ConsumerWidget {
     if (isVerySmall) {
       // Very small screens: minimal layout
       return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           // Compact logo
           _buildCompactLogo(context),
-          const SizedBox(width: 8),
-          // Search bar takes remaining space
-          const Expanded(child: SearchBarWidget()),
-          const SizedBox(width: 8),
-          // Compact account section
-          _buildCompactAccountSection(context, ref, user),
-          const SizedBox(width: 8),
           // Cart icon only
           _buildCompactCartSection(context, cartCount),
         ],
       );
     } else if (isSmall) {
-      // Small screens: basic layout
-      return Row(
+      // Small screens: basic layout with search
+      return Column(
         children: [
-          _buildLogo(context),
-          const SizedBox(width: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildCompactLogo(context),
+              _buildCompactAccountSection(context, ref, user),
+              _buildCompactCartSection(context, cartCount),
+            ],
+          ),
           const Expanded(child: SearchBarWidget()),
-          const SizedBox(width: 12),
-          _buildAccountSection(context, ref, user),
-          const SizedBox(width: 12),
-          _buildCartSection(context, cartCount),
         ],
       );
     } else if (isMedium) {
-      // Medium screens: add location
+      // Medium screens: horizontal layout with search
       return Row(
         children: [
           _buildLogo(context),
-          const SizedBox(width: 16),
-          _buildLocationSelector(context),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           const Expanded(child: SearchBarWidget()),
-          const SizedBox(width: 16),
-          _buildAccountSection(context, ref, user),
-          const SizedBox(width: 16),
-          _buildCartSection(context, cartCount),
+          const SizedBox(width: 12),
+          _buildCompactAccountSection(context, ref, user),
+          const SizedBox(width: 8),
+          _buildCompactCartSection(context, cartCount),
         ],
       );
     } else {
@@ -102,15 +96,15 @@ class TopNavBar extends ConsumerWidget {
       return Row(
         children: [
           _buildLogo(context),
-          const SizedBox(width: 20),
+          const SizedBox(width: 12),
           _buildLocationSelector(context),
-          const SizedBox(width: 20),
+          const SizedBox(width: 12),
           const Expanded(child: SearchBarWidget()),
-          const SizedBox(width: 20),
+          const SizedBox(width: 12),
           _buildLanguageSelector(context),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           _buildAccountSection(context, ref, user),
-          const SizedBox(width: 16),
+          const SizedBox(width: 8),
           _buildCartSection(context, cartCount),
         ],
       );
@@ -125,11 +119,11 @@ class TopNavBar extends ConsumerWidget {
         onTap: () => context.go('/home'),
         child: Container(
           height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
           child: const Text(
             'amazon',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.bold,
               color: Color(0xFF111111),
             ),
@@ -377,7 +371,7 @@ class TopNavBar extends ConsumerWidget {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => context.go('/cart'),
+        onTap: () => context.go('/home/cart'),
         child: _HoverEffect(
           child: Container(
             padding: EdgeInsets.symmetric(
@@ -442,65 +436,57 @@ class TopNavBar extends ConsumerWidget {
 
   /// Build compact account section for small screens
   Widget _buildCompactAccountSection(BuildContext context, WidgetRef ref, user) {
-    return HoverDropdownMenu(
-      trigger: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        child: const Icon(
-          Icons.account_circle_outlined,
-          color: Color(0xFF111111),
-          size: 24,
-        ),
+    return GestureDetector(
+      onTap: () {
+        if (user == null) {
+          context.push('/login');
+        } else {
+          context.push('/profile');
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: const Icon(Icons.person_outline, size: 24),
       ),
-      menuWidth: 280,
-      offset: const Offset(-240, 8),
-      menuItems: _buildAccountMenuItems(context, ref, user),
     );
   }
 
   /// Build compact cart section for small screens
   Widget _buildCompactCartSection(BuildContext context, int cartCount) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => context.go('/cart'),
-        child: _HoverEffect(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-            child: Stack(
-              children: [
-                const Icon(
-                  Icons.shopping_cart_outlined,
-                  color: Color(0xFF111111),
-                  size: 24,
-                ),
-                if (cartCount > 0)
-                  Positioned(
-                    right: -2,
-                    top: -2,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFFF9900),
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 16,
-                        minHeight: 16,
-                      ),
-                      child: Text(
-                        cartCount.toString(),
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
+    return GestureDetector(
+      onTap: () => context.push('/cart'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            const Icon(Icons.shopping_cart_outlined, size: 24),
+            if (cartCount > 0)
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF3A847),
+                    shape: BoxShape.circle,
                   ),
-              ],
-            ),
-          ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    cartCount.toString(),
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -719,9 +705,9 @@ class TopNavBar extends ConsumerWidget {
         child: _buildMenuListTile(
           icon: Icons.receipt_long,
           title: 'Your Orders',
-          onTap: () => context.go('/orders'),
+          onTap: () => context.go('/home/orders'),
         ),
-        onTap: () => context.go('/orders'),
+        onTap: () => context.go('/home/orders'),
       ),
       HoverDropdownItem(
         child: _buildMenuListTile(

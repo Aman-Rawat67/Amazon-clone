@@ -23,15 +23,22 @@ class CartItem {
 
   /// Creates a CartItem from JSON data
   factory CartItem.fromJson(Map<String, dynamic> json) {
-    return CartItem(
-      id: json['id'] as String,
-      productId: json['productId'] as String,
-      product: ProductModel.fromJson(json['product'] as Map<String, dynamic>),
-      quantity: json['quantity'] as int,
-      selectedColor: json['selectedColor'] as String?,
-      selectedSize: json['selectedSize'] as String?,
-      addedAt: (json['addedAt'] as Timestamp).toDate(),
-    );
+    try {
+      return CartItem(
+        id: json['id'] as String? ?? '',
+        productId: json['productId'] as String? ?? '',
+        product: ProductModel.fromJson(json['product'] as Map<String, dynamic>? ?? {}),
+        quantity: (json['quantity'] as num?)?.toInt() ?? 1,
+        selectedColor: json['selectedColor'] as String?,
+        selectedSize: json['selectedSize'] as String?,
+        addedAt: json['addedAt'] != null 
+          ? (json['addedAt'] as Timestamp).toDate()
+          : DateTime.now(),
+      );
+    } catch (e) {
+      print('🔥 Error parsing CartItem: $e');
+      rethrow;
+    }
   }
 
   /// Converts CartItem to JSON format
@@ -119,17 +126,32 @@ class CartModel {
 
   /// Creates a CartModel from JSON data
   factory CartModel.fromJson(Map<String, dynamic> json) {
-    return CartModel(
-      id: json['id'] as String,
-      userId: json['userId'] as String,
-      items: (json['items'] as List<dynamic>?)
-          ?.map((item) => CartItem.fromJson(item as Map<String, dynamic>))
-          .toList() ?? [],
-      createdAt: (json['createdAt'] as Timestamp).toDate(),
-      updatedAt: json['updatedAt'] != null
-          ? (json['updatedAt'] as Timestamp).toDate()
-          : null,
-    );
+    try {
+      return CartModel(
+        id: json['id'] as String? ?? '',
+        userId: json['userId'] as String? ?? '',
+        items: (json['items'] as List<dynamic>?)
+            ?.map((item) {
+              try {
+                return CartItem.fromJson(item as Map<String, dynamic>);
+              } catch (e) {
+                print('🔥 Error parsing cart item: $e');
+                return null;
+              }
+            })
+            .whereType<CartItem>()
+            .toList() ?? [],
+        createdAt: json['createdAt'] != null
+            ? (json['createdAt'] as Timestamp).toDate()
+            : DateTime.now(),
+        updatedAt: json['updatedAt'] != null
+            ? (json['updatedAt'] as Timestamp).toDate()
+            : null,
+      );
+    } catch (e) {
+      print('🔥 Error parsing CartModel: $e');
+      rethrow;
+    }
   }
 
   /// Converts CartModel to JSON format

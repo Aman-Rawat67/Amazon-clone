@@ -45,5 +45,18 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Required for Razorpay -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>gpay</string>
+		<string>phonepe</string>
+		<string>paytm</string>
+		<string>upi</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

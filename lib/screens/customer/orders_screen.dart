@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../constants/app_constants.dart';
 import '../../models/order_model.dart';
+import 'package:go_router/go_router.dart';
 
 /// Provider for fetching user orders
 final userOrdersProvider = FutureProvider<List<OrderModel>>((ref) async {
@@ -26,6 +27,9 @@ class OrdersScreen extends ConsumerWidget {
         title: const Text('My Orders'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        leading: BackButton(
+          onPressed: () => context.go('/home'),
+        ),
       ),
       body: ordersAsync.when(
         data: (orders) {
@@ -56,7 +60,7 @@ class OrdersScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: AppDimensions.paddingLarge),
                   ElevatedButton(
-                    onPressed: () => Navigator.pushReplacementNamed(context, '/home'),
+                    onPressed: () => context.go('/home'),
                     child: const Text('Start Shopping'),
                   ),
                 ],
@@ -143,7 +147,7 @@ class OrdersScreen extends ConsumerWidget {
                       ),
                     ),
                     OutlinedButton.icon(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: () => context.go('/home'),
                       icon: const Icon(Icons.arrow_back),
                       label: const Text('Go Back'),
                     ),

@@ -9,7 +9,7 @@ class AppConstants {
   static const String appVersion = '1.0.0';
 
   // API Keys (In production, these should be stored securely)
-  static const String razorpayApiKey = 'YOUR_RAZORPAY_API_KEY';
+  static const String razorpayApiKey = 'rzp_test_UVwxEu8DrexcG2';
   static const String stripePublishableKey = 'YOUR_STRIPE_PUBLISHABLE_KEY';
   static const String googleMapsApiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
 
@@ -38,8 +38,8 @@ class AppConstants {
   static const String languageKey = 'language';
   static const String fcmTokenKey = 'fcm_token';
 
-  // Product Categories
-  static const List<String> productCategories = [
+  // Product Categories and Subcategories
+  static const List<String> categories = [
     'Electronics',
     'Fashion',
     'Home & Kitchen',
@@ -51,6 +51,82 @@ class AppConstants {
     'Grocery',
     'Jewelry',
   ];
+
+  static const Map<String, List<String>> subcategories = {
+    'Electronics': [
+      'Mobiles',
+      'Laptops',
+      'Tablets',
+      'Cameras',
+      'Audio',
+      'Gaming',
+    ],
+    'Fashion': [
+      "Men's Fashion",
+      "Women's Fashion",
+      "Kids' Fashion",
+      'Shoes',
+      'Watches',
+      'Accessories',
+    ],
+    'Home & Kitchen': [
+      'Kitchen',
+      'Furniture',
+      'Decor',
+      'Garden',
+      'Storage',
+      'Lighting',
+    ],
+    'Books': [
+      'Fiction',
+      'Non-Fiction',
+      'Academic',
+      'Children',
+      'Comics',
+    ],
+    'Sports': [
+      'Exercise & Fitness',
+      'Outdoor Recreation',
+      'Team Sports',
+      'Sports Accessories',
+      'Sports Nutrition',
+    ],
+    'Health & Beauty': [
+      'Personal Care',
+      'Health Care',
+      'Beauty',
+      'Nutrition',
+      'Medical Supplies',
+    ],
+    'Toys & Games': [
+      'Action Figures',
+      'Board Games',
+      'Educational Toys',
+      'Outdoor Toys',
+      'Arts & Crafts',
+    ],
+    'Automotive': [
+      'Car Accessories',
+      'Bike Accessories',
+      'Tools',
+      'Spare Parts',
+      'Car Care',
+    ],
+    'Grocery': [
+      'Snacks',
+      'Beverages',
+      'Packaged Food',
+      'Household Supplies',
+      'Personal Care',
+    ],
+    'Jewelry': [
+      'Necklaces',
+      'Rings',
+      'Earrings',
+      'Bracelets',
+      'Watches',
+    ],
+  };
 
   // Order Settings
   static const double freeShippingThreshold = 500.0;

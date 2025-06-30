@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/product_model.dart';
 import '../services/firestore_service.dart';
+import '../constants/filter_constants.dart';
 
 /// Provider for Firestore service
 final firestoreServiceProvider = Provider<FirestoreService>((ref) => FirestoreService());
@@ -27,6 +28,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
     bool? isApproved,
     String? vendorId,
     bool refresh = false,
+    SortOption sortBy = SortOption.newest,
   }) async {
     try {
       if (refresh) {
@@ -38,6 +40,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
         searchQuery: searchQuery,
         isApproved: isApproved,
         vendorId: vendorId,
+        sortBy: sortBy,
       );
 
       state = AsyncValue.data(products);
@@ -50,10 +53,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
   Future<String> addProduct(ProductModel product) async {
     try {
       final productId = await _firestoreService.addProduct(product);
-      
-      // Reload products to include the new one
       await loadProducts(refresh: true);
-      
       return productId;
     } catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
@@ -65,8 +65,6 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
   Future<void> updateProduct(String productId, Map<String, dynamic> data) async {
     try {
       await _firestoreService.updateProduct(productId, data);
-      
-      // Update the product in the current state
       state.whenData((products) {
         final updatedProducts = products.map((product) {
           if (product.id == productId) {
@@ -85,7 +83,6 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
           }
           return product;
         }).toList();
-        
         state = AsyncValue.data(updatedProducts);
       });
     } catch (e) {
@@ -98,8 +95,6 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
   Future<void> deleteProduct(String productId) async {
     try {
       await _firestoreService.deleteProduct(productId);
-      
-      // Remove the product from the current state
       state.whenData((products) {
         final updatedProducts = products.where((product) => product.id != productId).toList();
         state = AsyncValue.data(updatedProducts);
@@ -122,10 +117,13 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
   }
 
   /// Search products
-  Future<void> searchProducts(String searchQuery) async {
+  Future<void> searchProducts(String searchQuery, {String? category}) async {
     try {
       state = const AsyncValue.loading();
-      final products = await _firestoreService.searchProducts(searchQuery);
+      final products = await _firestoreService.searchProducts(
+        query: searchQuery,
+        category: category,
+      );
       state = AsyncValue.data(products);
     } catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
@@ -197,147 +195,184 @@ final categoriesProvider = FutureProvider<List<String>>((ref) async {
   return await firestoreService.getCategories();
 });
 
-/// Provider for filtered products
-final filteredProductsProvider = StateProvider<List<ProductModel>>((ref) => []);
-
-/// Provider for search query
-final searchQueryProvider = StateProvider<String>((ref) => '');
-
-/// Provider for selected category
-final selectedCategoryProvider = StateProvider<String?>((ref) => null);
-
-/// Provider for price range filter
-final priceRangeProvider = StateProvider<RangeValues>((ref) => const RangeValues(0, 10000));
-
-/// Provider for sort option
-final sortOptionProvider = StateProvider<ProductSortOption>((ref) => ProductSortOption.newest);
-
-/// Enum for product sorting options
-enum ProductSortOption {
-  newest,
-  oldest,
-  priceLowToHigh,
-  priceHighToLow,
-  nameAZ,
-  nameZA,
-  rating,
-  popularity,
-}
-
-/// Provider for sorted and filtered products
-final sortedAndFilteredProductsProvider = Provider<List<ProductModel>>((ref) {
-  final products = ref.watch(productProvider);
-  final searchQuery = ref.watch(searchQueryProvider);
-  final selectedCategory = ref.watch(selectedCategoryProvider);
-  final priceRange = ref.watch(priceRangeProvider);
-  final sortOption = ref.watch(sortOptionProvider);
-
-  return products.when(
-    data: (productList) {
-      var filteredProducts = productList;
-
-      // Filter by search query
-      if (searchQuery.isNotEmpty) {
-        filteredProducts = filteredProducts.where((product) {
-          return product.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
-              product.description.toLowerCase().contains(searchQuery.toLowerCase()) ||
-              product.tags.any((tag) => tag.toLowerCase().contains(searchQuery.toLowerCase()));
-        }).toList();
-      }
-
-      // Filter by category
-      if (selectedCategory != null && selectedCategory.isNotEmpty) {
-        filteredProducts = filteredProducts.where((product) {
-          return product.category == selectedCategory;
-        }).toList();
-      }
-
-      // Filter by price range
-      filteredProducts = filteredProducts.where((product) {
-        return product.price >= priceRange.start && product.price <= priceRange.end;
-      }).toList();
-
-      // Filter only approved and active products for customers
-      filteredProducts = filteredProducts.where((product) {
-        return product.isApproved && product.isActive;
-      }).toList();
-
-      // Sort products
-      switch (sortOption) {
-        case ProductSortOption.newest:
-          filteredProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-          break;
-        case ProductSortOption.oldest:
-          filteredProducts.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-          break;
-        case ProductSortOption.priceLowToHigh:
-          filteredProducts.sort((a, b) => a.price.compareTo(b.price));
-          break;
-        case ProductSortOption.priceHighToLow:
-          filteredProducts.sort((a, b) => b.price.compareTo(a.price));
-          break;
-        case ProductSortOption.nameAZ:
-          filteredProducts.sort((a, b) => a.name.compareTo(b.name));
-          break;
-        case ProductSortOption.nameZA:
-          filteredProducts.sort((a, b) => b.name.compareTo(a.name));
-          break;
-        case ProductSortOption.rating:
-          filteredProducts.sort((a, b) => b.rating.compareTo(a.rating));
-          break;
-        case ProductSortOption.popularity:
-          filteredProducts.sort((a, b) => b.reviewCount.compareTo(a.reviewCount));
-          break;
-      }
-
-      return filteredProducts;
-    },
-    loading: () => [],
-    error: (_, __) => [],
-  );
-});
-
-/// Provider for featured products
-final featuredProductsProvider = Provider<List<ProductModel>>((ref) {
-  final products = ref.watch(productProvider);
+/// Product filter state class
+class ProductFilters {
+  final SortOption sortBy;
+  final double? minPrice;
+  final double? maxPrice;
+  final double? minRating;
+  final String? category;
+  final String? subcategory;
+  final String? priceRange;
   
-  return products.when(
-    data: (productList) {
-      return productList
-          .where((product) => product.isApproved && product.isActive && product.rating >= 4.0)
-          .take(10)
-          .toList();
-    },
-    loading: () => [],
-    error: (_, __) => [],
-  );
-});
+  ProductFilters({
+    this.sortBy = SortOption.newest,
+    this.minPrice,
+    this.maxPrice,
+    this.minRating,
+    this.category,
+    this.subcategory,
+    this.priceRange,
+  });
 
-/// Provider for vendor's products
-final vendorProductsProvider = FutureProvider.family<List<ProductModel>, String>((ref, vendorId) async {
-  final firestoreService = ref.watch(firestoreServiceProvider);
-  return await firestoreService.getProducts(vendorId: vendorId);
-});
-
-/// Provider for products pending approval (admin only)
-final pendingApprovalProductsProvider = FutureProvider<List<ProductModel>>((ref) async {
-  final firestoreService = ref.watch(firestoreServiceProvider);
-  return await firestoreService.getProducts(isApproved: false);
-});
-
-/// Range values class for price filtering
-class RangeValues {
-  final double start;
-  final double end;
-
-  const RangeValues(this.start, this.end);
-
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is RangeValues && other.start == start && other.end == end;
+  /// Whether any filters are active
+  bool get hasActiveFilters {
+    return sortBy != SortOption.newest ||
+           minPrice != null ||
+           maxPrice != null ||
+           minRating != null ||
+           priceRange != null;
   }
 
-  @override
-  int get hashCode => start.hashCode ^ end.hashCode;
-} 
+  ProductFilters copyWith({
+    SortOption? sortBy,
+    double? minPrice,
+    double? maxPrice,
+    double? minRating,
+    String? category,
+    String? subcategory,
+    String? priceRange,
+  }) {
+    return ProductFilters(
+      sortBy: sortBy ?? this.sortBy,
+      minPrice: minPrice ?? this.minPrice,
+      maxPrice: maxPrice ?? this.maxPrice,
+      minRating: minRating ?? this.minRating,
+      category: category ?? this.category,
+      subcategory: subcategory ?? this.subcategory,
+      priceRange: priceRange ?? this.priceRange,
+    );
+  }
+}
+
+/// Provider for product filters
+final productFiltersProvider = StateNotifierProvider<ProductFiltersNotifier, ProductFilters>((ref) {
+  return ProductFiltersNotifier(ref);
+});
+
+/// Notifier for product filters
+class ProductFiltersNotifier extends StateNotifier<ProductFilters> {
+  final Ref _ref;
+
+  ProductFiltersNotifier(this._ref) : super(ProductFilters());
+
+  /// Update sort option
+  void updateSortBy(SortOption sortBy) {
+    state = state.copyWith(sortBy: sortBy);
+    _refreshProducts();
+  }
+
+  /// Update price range
+  void updatePriceRange(double? minPrice, double? maxPrice) {
+    state = state.copyWith(
+      minPrice: minPrice,
+      maxPrice: maxPrice,
+    );
+    _refreshProducts();
+  }
+
+  /// Update minimum rating
+  void updateRating(double? rating) {
+    state = state.copyWith(minRating: rating);
+    _refreshProducts();
+  }
+
+  /// Update category
+  void updateCategory(String? category) {
+    state = state.copyWith(
+      category: category,
+      subcategory: null, // Reset subcategory when category changes
+    );
+    _refreshProducts();
+  }
+
+  /// Update subcategory
+  void updateSubcategory(String? subcategory) {
+    state = state.copyWith(subcategory: subcategory);
+    _refreshProducts();
+  }
+
+  /// Reset all filters
+  void resetFilters() {
+    state = ProductFilters();
+    _refreshProducts();
+  }
+
+  /// Refresh products with current filters
+  void _refreshProducts() {
+    _ref.read(productProvider.notifier).loadProducts(
+      category: state.category,
+      sortBy: state.sortBy,
+    );
+  }
+}
+
+/// Provider for filtered products
+final filteredProductsProvider = Provider<AsyncValue<List<ProductModel>>>((ref) {
+  final filters = ref.watch(productFiltersProvider);
+  final productsAsyncValue = ref.watch(productProvider);
+
+  return productsAsyncValue.when(
+    loading: () => const AsyncValue.loading(),
+    error: (error, stack) => AsyncValue.error(error, stack),
+    data: (products) {
+      // Apply filters
+      var filteredProducts = products.where((product) {
+        // Category filter
+        if (filters.category != null && filters.category!.isNotEmpty) {
+          if (product.category.toLowerCase() != filters.category!.toLowerCase()) {
+            return false;
+          }
+        }
+
+        // Price range filter
+        if (filters.minPrice != null && product.price < filters.minPrice!) {
+          return false;
+        }
+        if (filters.maxPrice != null && product.price > filters.maxPrice!) {
+          return false;
+        }
+
+        // Rating filter
+        if (filters.minRating != null && filters.minRating! > 0 && product.rating < filters.minRating!) {
+          return false;
+        }
+
+        return true;
+      }).toList();
+
+      // Apply sorting
+      switch (filters.sortBy) {
+        case SortOption.priceLowToHigh:
+          filteredProducts.sort((a, b) => a.price.compareTo(b.price));
+          break;
+        case SortOption.priceHighToLow:
+          filteredProducts.sort((a, b) => b.price.compareTo(a.price));
+          break;
+        case SortOption.popularity:
+          filteredProducts.sort((a, b) => b.rating.compareTo(a.rating));
+          break;
+        case SortOption.newest:
+        default:
+          filteredProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          break;
+      }
+
+      return AsyncValue.data(filteredProducts);
+    },
+  );
+});
+
+/// Provider for searching products with query and optional category filter
+final searchProductsProvider = FutureProvider.family<List<ProductModel>, ({String query, String? category})>((ref, params) async {
+  final firestoreService = ref.read(firestoreServiceProvider);
+  
+  try {
+    return await firestoreService.searchProducts(
+      query: params.query,
+      category: params.category == 'All' ? null : params.category,
+    );
+  } catch (e) {
+    throw Exception('Failed to search products: $e');
+  }
+});

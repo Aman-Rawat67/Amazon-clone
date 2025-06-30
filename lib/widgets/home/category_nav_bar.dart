@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'hover_dropdown_menu.dart';
 
 /// Provider for currently hovered category
 final hoveredCategoryProvider = StateProvider<String?>((ref) => null);
@@ -125,11 +127,7 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
                         ...categories.keys.take(_getCategoryCount(availableWidth)).map((category) => 
                           Padding(
                             padding: const EdgeInsets.only(right: 20),
-                            child: _buildCategoryItem(
-                              context,
-                              category,
-                              hoveredCategory == category,
-                            ),
+                            child: _buildCategoryDropdown(context, category),
                           ),
                         ),
                         
@@ -148,6 +146,74 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Build category dropdown with subcategories
+  Widget _buildCategoryDropdown(BuildContext context, String category) {
+    final subcategories = categories[category] ?? [];
+    
+    return HoverDropdownMenu(
+      menuWidth: 220,
+      offset: const Offset(0, 4),
+      trigger: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              category,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.keyboard_arrow_down,
+              color: Colors.white,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+      menuItems: [
+        for (final subcategory in subcategories)
+          HoverDropdownItem(
+            onTap: () {
+              // Navigate to category products screen with subcategory
+              context.push('/category/$category?subcategory=$subcategory');
+            },
+            child: _buildSubcategoryItem(subcategory),
+          ),
+      ],
+    );
+  }
+
+  /// Build subcategory item with hover effect
+  Widget _buildSubcategoryItem(String subcategory) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.arrow_right,
+            size: 16,
+            color: Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              subcategory,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -212,202 +278,66 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
     );
   }
 
-  /// Build individual category item
-  Widget _buildCategoryItem(BuildContext context, String category, bool isHovered) {
-    return MouseRegion(
-      onEnter: (_) {
-        ref.read(hoveredCategoryProvider.notifier).state = category;
-      },
-      onExit: (_) {
-        // Add small delay to prevent flickering
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) {
-            ref.read(hoveredCategoryProvider.notifier).state = null;
-          }
-        });
-      },
-      cursor: SystemMouseCursors.click,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: const EdgeInsets.only(right: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        decoration: BoxDecoration(
-          color: isHovered ? Colors.white.withOpacity(0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-          border: isHovered 
-              ? Border.all(color: Colors.white.withOpacity(0.3))
-              : null,
-        ),
-        child: Text(
-          category,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: isHovered ? FontWeight.w600 : FontWeight.w400,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Build mobile category bar (collapsible)
+  /// Build mobile navigation with collapsible menu
   Widget _buildMobileNavigation(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF232F3E),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      height: 40,
-      child: Row(
+    return ExpansionTile(
+      title: Row(
         children: [
-          // Hamburger menu for mobile
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: GestureDetector(
-              onTap: () {
-                _showMobileCategoryMenu(context);
-              },
-              child: const Row(
-                children: [
-                  Icon(Icons.menu, color: Colors.white, size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'Categories',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          // Featured categories
-          Expanded(
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              children: ['Electronics', 'Clothing', 'Home'].map((category) {
-                return Container(
-                  margin: const EdgeInsets.only(right: 16),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Text(
-                    category,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                    ),
-                  ),
-                );
-              }).toList(),
+          const Icon(Icons.menu, color: Colors.white, size: 20),
+          const SizedBox(width: 8),
+          const Text(
+            'All Categories',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
       ),
-    );
-  }
-
-  /// Show mobile category menu
-  void _showMobileCategoryMenu(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        maxChildSize: 0.9,
-        minChildSize: 0.5,
-        builder: (context, scrollController) {
-          return Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 16),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
+      collapsedIconColor: Colors.white,
+      iconColor: Colors.white,
+      backgroundColor: const Color(0xFF232F3E),
+      collapsedBackgroundColor: const Color(0xFF232F3E),
+      children: [
+        Container(
+          color: Colors.white,
+          child: ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: categories.length,
+            itemBuilder: (context, index) {
+              final category = categories.keys.elementAt(index);
+              final subcategories = categories[category] ?? [];
+              
+              return ExpansionTile(
+                title: Text(
+                  category,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-              
-              // Title
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Text(
-                      'Shop by Category',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF111111),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              const SizedBox(height: 16),
-              
-              // Categories list
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  itemCount: categories.length,
-                  itemBuilder: (context, index) {
-                    final category = categories.keys.elementAt(index);
-                                         final subcategories = categories[category] ?? [];
-                    
-                    return ExpansionTile(
+                children: [
+                  for (final subcategory in subcategories)
+                    ListTile(
+                      contentPadding: const EdgeInsets.only(left: 32, right: 16),
+                      leading: const Icon(Icons.arrow_right, size: 16),
                       title: Text(
-                        category,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF111111),
-                        ),
+                        subcategory,
+                        style: const TextStyle(fontSize: 14),
                       ),
-                      children: subcategories.map((subcategory) {
-                        return ListTile(
-                          contentPadding: const EdgeInsets.only(left: 32, right: 16),
-                          title: Text(
-                            subcategory,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF111111),
-                            ),
-                          ),
-                          trailing: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 14,
-                            color: Colors.grey,
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            // TODO: Navigate to subcategory
-                          },
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+                      onTap: () {
+                        // Navigate to category products screen with subcategory
+                        context.push('/category/$category?subcategory=$subcategory');
+                      },
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 } 

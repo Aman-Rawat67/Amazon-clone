@@ -16,6 +16,7 @@ class ProductSectionWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    debugPrint('debugging19: ${section.title}');
     if (!section.hasProducts) {
       return const SizedBox.shrink();
     }
@@ -145,10 +146,7 @@ class ProductSectionWidget extends ConsumerWidget {
           itemCount: productsToShow.length,
           itemBuilder: (context, index) {
             final product = productsToShow[index];
-            return ProductCard(
-              product: product,
-              showAddToCart: true,
-            );
+            return _buildRecommendedProductCard(product);
           },
         );
       },
@@ -162,15 +160,19 @@ class ProductSectionWidget extends ConsumerWidget {
       child: Center(
         child: TextButton(
           onPressed: () {
-            if (section.seeMoreRoute != null) {
-              context.push(section.seeMoreRoute!);
-            } else {
+            String? route = section.seeMoreRoute;
+            
+            if (route == null) {
               // Default action - determine category from section or use first product's category
-              String category = '';
+              String? category;
+              
+              // Try to get category from first product
               if (section.hasProducts && section.products.isNotEmpty) {
-                category = section.products.first.category;
-              } else {
-                // Fallback: try to extract category from section title
+                category = section.products.first.category.toLowerCase();
+              }
+              
+              // If no category from product, try to extract from section title
+              if (category == null || category.isEmpty) {
                 final title = section.title.toLowerCase();
                 if (title.contains('electronics')) {
                   category = 'electronics';
@@ -182,15 +184,28 @@ class ProductSectionWidget extends ConsumerWidget {
                   category = 'books';
                 } else if (title.contains('sports')) {
                   category = 'sports';
-                } else {
-                  category = 'all'; // fallback
+                } else if (title.contains('beauty')) {
+                  category = 'beauty';
+                } else if (title.contains('toys')) {
+                  category = 'toys';
+                } else if (title.contains('automotive')) {
+                  category = 'automotive';
+                } else if (title.contains('health')) {
+                  category = 'health';
+                } else if (title.contains('grocery')) {
+                  category = 'grocery';
                 }
               }
               
-              if (category.isNotEmpty) {
-                context.push('/category/${Uri.encodeComponent(category)}');
+              // Create route with encoded category
+              if (category != null && category.isNotEmpty) {
+                route = '/category/${Uri.encodeComponent(category)}';
+              } else {
+                route = '/category/all'; // fallback to all products
               }
             }
+            
+            context.push(route);
           },
           style: TextButton.styleFrom(
             foregroundColor: AppColors.primary,
@@ -199,21 +214,21 @@ class ProductSectionWidget extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                section.seeMoreText!,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.arrow_forward,
-                size: 16,
-              ),
+              Text(section.seeMoreText ?? 'See more'),
+              const SizedBox(width: 4),
+              const Icon(Icons.arrow_forward, size: 16),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildRecommendedProductCard(ProductModel product) {
+    return GestureDetector(
+      onTap: () => context.go('/product/${product.id}'),
+      child: Container(
+        // ... existing code ...
       ),
     );
   }

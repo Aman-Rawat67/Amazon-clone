@@ -21,11 +21,19 @@ class CartNotifier extends StreamNotifier<CartModel?> {
     // Watch userId changes
     _userId = ref.watch(userIdProvider);
     
-    if (_userId != null) {
-      // Return real-time cart stream
-      return _firestoreService.streamCart(_userId!);
-    } else {
+    if (_userId == null) {
       // Return empty stream for non-logged in users
+      return Stream.value(null);
+    }
+
+    try {
+      // Return real-time cart stream
+      return _firestoreService.streamCart(_userId!).handleError((error) {
+        print('🔥 Error streaming cart: $error');
+        return null;
+      });
+    } catch (e) {
+      print('🔥 Error building cart stream: $e');
       return Stream.value(null);
     }
   }

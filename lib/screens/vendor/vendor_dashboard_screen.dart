@@ -545,29 +545,6 @@ class VendorDashboardScreen extends ConsumerWidget {
   }
 
   void _showDetailedAnalytics(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: const Text('Detailed Analytics'),
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-          ),
-          body: const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.analytics, size: 100, color: Colors.grey),
-                SizedBox(height: AppDimensions.paddingMedium),
-                Text('Detailed Analytics'),
-                SizedBox(height: AppDimensions.paddingSmall),
-                Text('Charts and detailed reports will be displayed here'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    context.push('/vendor/analytics');
   }
 } 

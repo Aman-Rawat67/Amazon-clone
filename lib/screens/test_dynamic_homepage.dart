@@ -90,12 +90,7 @@ class TestDynamicHomepage extends ConsumerWidget {
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const DynamicHomeScreen(),
-                        ),
-                      );
+                      context.push('/home');
                     },
                     icon: const Icon(Icons.preview),
                     label: const Text('Preview Dynamic Homepage'),

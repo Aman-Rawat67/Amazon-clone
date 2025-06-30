@@ -8,6 +8,7 @@ import '../models/banner_model.dart';
 import '../models/category_model.dart';
 import '../models/deal_model.dart';
 import '../constants/app_constants.dart';
+import '../constants/filter_constants.dart';
 
 /// Service class for handling Firestore database operations
 class FirestoreService {
@@ -75,6 +76,7 @@ class FirestoreService {
   Future<void> _createCategorySection(String category, String firstProductId) async {
     try {
       final sectionTitle = _generateSectionTitle(category);
+      final encodedCategory = Uri.encodeComponent(category.toLowerCase());
       
       await _firestore
           .collection(AppConstants.productSectionsCollection)
@@ -84,7 +86,7 @@ class FirestoreService {
         'category': category,
         'productIds': [firstProductId],
         'seeMoreText': 'See all offers',
-        'seeMoreRoute': '/category/$category',
+        'seeMoreRoute': '/home/category/$encodedCategory',
         'displayCount': 4,
         'isActive': true,
         'order': await _getNextSectionOrder(),
@@ -181,6 +183,7 @@ class FirestoreService {
     String? searchQuery,
     bool? isApproved,
     String? vendorId,
+    SortOption sortBy = SortOption.newest,
   }) async {
     try {
       Query query = _firestore.collection(AppConstants.productsCollection);
@@ -217,7 +220,21 @@ class FirestoreService {
       bool shouldUseServerSideOrdering = filterCount == 0;
       
       if (shouldUseServerSideOrdering) {
-        query = query.orderBy('createdAt', descending: true);
+        switch (sortBy) {
+          case SortOption.priceLowToHigh:
+            query = query.orderBy('price', descending: false);
+            break;
+          case SortOption.priceHighToLow:
+            query = query.orderBy('price', descending: true);
+            break;
+          case SortOption.popularity:
+            query = query.orderBy('rating', descending: true);
+            break;
+          case SortOption.newest:
+          default:
+            query = query.orderBy('createdAt', descending: true);
+            break;
+        }
       }
 
       // Add pagination (only works with server-side ordering)
@@ -235,7 +252,21 @@ class FirestoreService {
 
       // Sort on client side if we couldn't use server-side ordering
       if (!shouldUseServerSideOrdering) {
-        products.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        switch (sortBy) {
+          case SortOption.priceLowToHigh:
+            products.sort((a, b) => a.price.compareTo(b.price));
+            break;
+          case SortOption.priceHighToLow:
+            products.sort((a, b) => b.price.compareTo(a.price));
+            break;
+          case SortOption.popularity:
+            products.sort((a, b) => b.rating.compareTo(a.rating));
+            break;
+          case SortOption.newest:
+          default:
+            products.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            break;
+        }
       }
 
       return products;
@@ -266,13 +297,42 @@ class FirestoreService {
     }
   }
 
-
-
   // CART OPERATIONS
 
-  /// Add item to cart with improved duplicate handling
+  /// Stream user cart for real-time updates
+  Stream<CartModel?> streamCart(String userId) {
+    try {
+      return _firestore
+          .collection(AppConstants.cartsCollection)
+          .doc(userId)
+          .snapshots()
+          .map((doc) {
+        if (doc.exists && doc.data() != null) {
+          try {
+            return CartModel.fromJson(doc.data()!);
+          } catch (e) {
+            print('🔥 Error parsing cart data: $e');
+            return null;
+          }
+        }
+        return null;
+      }).handleError((error) {
+        print('🔥 Error streaming cart: $error');
+        return null;
+      });
+    } catch (e) {
+      print('🔥 Error setting up cart stream: $e');
+      return Stream.value(null);
+    }
+  }
+
+  /// Add item to cart with improved error handling
   Future<void> addToCart(String userId, CartItem item) async {
     try {
+      if (userId.isEmpty) {
+        throw Exception('Invalid user ID');
+      }
+
       final cartRef = _firestore
           .collection(AppConstants.cartsCollection)
           .doc(userId);
@@ -327,6 +387,7 @@ class FirestoreService {
         await cartRef.set(cart.toJson());
       }
     } catch (e) {
+      print('🔥 Error adding item to cart: $e');
       throw Exception('Failed to add item to cart: ${e.toString()}');
     }
   }
@@ -408,20 +469,6 @@ class FirestoreService {
       throw Exception('Failed to get cart: ${e.toString()}');
     }
     return null;
-  }
-
-  /// Stream user cart for real-time updates
-  Stream<CartModel?> streamCart(String userId) {
-    return _firestore
-        .collection(AppConstants.cartsCollection)
-        .doc(userId)
-        .snapshots()
-        .map((doc) {
-      if (doc.exists && doc.data() != null) {
-        return CartModel.fromJson(doc.data()!);
-      }
-      return null;
-    });
   }
 
   /// Clear cart
@@ -1287,7 +1334,7 @@ class FirestoreService {
           'subtitle': 'Best deals on home appliances',
           'productIds': products.take(4).map((p) => p.id).toList(),
           'seeMoreText': 'See more',
-          'seeMoreRoute': '/products?category=Electronics',
+          'seeMoreRoute': '/home/category/appliances',
           'displayCount': 4,
           'order': 0,
           'isActive': true,
@@ -1302,7 +1349,7 @@ class FirestoreService {
           'subtitle': 'Premium audio experience',
           'productIds': products.skip(4).take(4).map((p) => p.id).toList(),
           'seeMoreText': 'See all offers',
-          'seeMoreRoute': '/products?category=Electronics',
+          'seeMoreRoute': '/home/category/headphones',
           'displayCount': 4,
           'order': 1,
           'isActive': true,
@@ -1317,7 +1364,7 @@ class FirestoreService {
           'subtitle': 'Beautiful home decor items',
           'productIds': products.skip(8).take(4).map((p) => p.id).toList(),
           'seeMoreText': 'Explore all',
-          'seeMoreRoute': '/products?category=Home & Kitchen',
+          'seeMoreRoute': '/home/category/home-decor',
           'displayCount': 4,
           'order': 2,
           'isActive': true,
@@ -1332,7 +1379,7 @@ class FirestoreService {
           'subtitle': 'Latest fashion collection',
           'productIds': products.skip(12).take(4).map((p) => p.id).toList(),
           'seeMoreText': 'Shop now',
-          'seeMoreRoute': '/products?category=Fashion',
+          'seeMoreRoute': '/home/category/fashion',
           'displayCount': 4,
           'order': 3,
           'isActive': true,
@@ -1692,7 +1739,7 @@ class FirestoreService {
         'subtitle': 'Hand-picked products just for you',
         'productIds': productIds,
         'seeMoreText': 'See all products',
-        'seeMoreRoute': '/products',
+        'seeMoreRoute': '/home/category/featured',
         'displayCount': 4,
         'order': 0,
         'isActive': true,
@@ -1802,23 +1849,41 @@ class FirestoreService {
         .map((snapshot) => snapshot.docs.length);
   }
 
-  /// Search products by query
-  Future<List<ProductModel>> searchProducts(String query, {int limit = 20}) async {
+  /// Search products by query string and optional category
+  Future<List<ProductModel>> searchProducts({
+    required String query,
+    String? category,
+  }) async {
     try {
-      final lowerQuery = query.toLowerCase();
-      
-      final querySnapshot = await _firestore
+      Query productsQuery = _firestore
           .collection(AppConstants.productsCollection)
-          .where('name', isGreaterThanOrEqualTo: lowerQuery)
-          .where('name', isLessThan: lowerQuery + 'z')
-          .limit(limit)
-          .get();
-      
+          .where('isApproved', isEqualTo: true);
+
+      // Add category filter if specified
+      if (category != null && category != 'All') {
+        productsQuery = productsQuery.where('category', isEqualTo: category);
+      }
+
+      // Convert query to lowercase for case-insensitive search
+      final searchQuery = query.toLowerCase();
+
+      // Get all products that match the filters
+      final querySnapshot = await productsQuery.get();
+
+      // Filter and map products based on search query
       return querySnapshot.docs
-          .map((doc) => ProductModel.fromJson(doc.data()))
+          .map((doc) => ProductModel.fromJson(doc.data() as Map<String, dynamic>))
+          .where((product) {
+            final name = product.name.toLowerCase();
+            final description = product.description.toLowerCase();
+            
+            // Check if product name or description contains the search query
+            return name.contains(searchQuery) || 
+                   description.contains(searchQuery);
+          })
           .toList();
     } catch (e) {
-      throw Exception('Failed to search products: ${e.toString()}');
+      throw Exception('Failed to search products: $e');
     }
   }
 
@@ -1854,7 +1919,7 @@ class FirestoreService {
         'description': 'Up to 70% off on electronics, fashion & more',
         'imageUrl': 'https://via.placeholder.com/1200x400/FF6B35/FFFFFF?text=Summer+Sale+2024',
         'actionText': 'Shop Now',
-        'actionRoute': '/deals',
+        'actionRoute': '/home/deals',
         'isActive': true,
         'order': 0,
         'startDate': Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 1))),
@@ -1871,7 +1936,7 @@ class FirestoreService {
         'description': 'Free delivery on orders above ₹499',
         'imageUrl': 'https://via.placeholder.com/1200x400/2ECC71/FFFFFF?text=Free+Shipping',
         'actionText': 'Explore',
-        'actionRoute': '/products',
+        'actionRoute': '/home/products',
         'isActive': true,
         'order': 1,
         'startDate': Timestamp.fromDate(DateTime.now()),
@@ -1888,7 +1953,7 @@ class FirestoreService {
         'description': 'Discover the latest trends in fashion',
         'imageUrl': 'https://via.placeholder.com/1200x400/9B59B6/FFFFFF?text=New+Arrivals',
         'actionText': 'Browse',
-        'actionRoute': '/category/fashion',
+        'actionRoute': '/home/category/fashion',
         'isActive': true,
         'order': 2,
         'startDate': Timestamp.fromDate(DateTime.now()),
