@@ -280,18 +280,19 @@ class FirestoreService {
     try {
       final querySnapshot = await _firestore
           .collection(AppConstants.productsCollection)
-          .where('category', isEqualTo: category)
+          .where('isActive', isEqualTo: true)
+          .where('isApproved', isEqualTo: true)
+          .where('category', whereIn: [
+            category.toLowerCase(),
+            category,
+            category.toUpperCase()
+          ])
+          .orderBy('createdAt', descending: true)
           .get();
 
-      final products = querySnapshot.docs
+      return querySnapshot.docs
           .map((doc) => ProductModel.fromJson(doc.data()))
-          .where((product) => product.isApproved && product.isActive) // Filter on client side
           .toList();
-
-      // Sort by creation date on client side (newest first)
-      products.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-      return products;
     } catch (e) {
       throw Exception('Failed to get products by category: ${e.toString()}');
     }
@@ -299,30 +300,40 @@ class FirestoreService {
 
   // CART OPERATIONS
 
-  /// Stream user cart for real-time updates
+  /// Stream cart data for a user
   Stream<CartModel?> streamCart(String userId) {
+    return _firestore
+        .collection(AppConstants.cartsCollection)
+        .where('userId', isEqualTo: userId)
+        .limit(1)
+        .snapshots()
+        .map((snapshot) {
+          if (snapshot.docs.isEmpty) return null;
+          return CartModel.fromJson(snapshot.docs.first.data());
+        });
+  }
+
+  /// Update cart data
+  Future<void> updateCart(CartModel cart) async {
     try {
-      return _firestore
+      await _firestore
           .collection(AppConstants.cartsCollection)
-          .doc(userId)
-          .snapshots()
-          .map((doc) {
-        if (doc.exists && doc.data() != null) {
-          try {
-            return CartModel.fromJson(doc.data()!);
-          } catch (e) {
-            print('🔥 Error parsing cart data: $e');
-            return null;
-          }
-        }
-        return null;
-      }).handleError((error) {
-        print('🔥 Error streaming cart: $error');
-        return null;
-      });
+          .doc(cart.id)
+          .set(cart.toJson(), SetOptions(merge: true));
     } catch (e) {
-      print('🔥 Error setting up cart stream: $e');
-      return Stream.value(null);
+      throw Exception('Failed to update cart: $e');
+    }
+  }
+
+  /// Delete cart
+  Future<void> deleteCart(String cartId) async {
+    try {
+      await _firestore
+          .collection(AppConstants.cartsCollection)
+          .doc(cartId)
+          .delete();
+    } catch (e) {
+      throw Exception('Failed to delete cart: $e');
     }
   }
 

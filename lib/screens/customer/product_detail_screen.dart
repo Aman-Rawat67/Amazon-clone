@@ -1991,6 +1991,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         product: product,
         quantity: quantity,
         selectedColor: _selectedColor,
+        selectedSize: _selectedSize,
       );
 
       if (mounted) {
@@ -2013,7 +2014,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             action: SnackBarAction(
               label: 'View Cart',
               textColor: Colors.white,
-              onPressed: () => context.go('/home/cart'),
+              onPressed: () => context.go('/cart'),
             ),
           ),
         );

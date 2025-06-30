@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../models/product_model.dart';
 import '../../models/product_section_model.dart';
 import '../../constants/app_constants.dart';
 import 'product_card.dart';
@@ -9,10 +10,7 @@ import 'product_card.dart';
 class ProductSectionWidget extends ConsumerWidget {
   final ProductSection section;
 
-  const ProductSectionWidget({
-    super.key,
-    required this.section,
-  });
+  const ProductSectionWidget({super.key, required this.section});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,15 +39,14 @@ class ProductSectionWidget extends ConsumerWidget {
           children: [
             // Section header
             _buildSectionHeader(context),
-            
+
             const SizedBox(height: 20),
-            
+
             // Products grid
             _buildProductsGrid(context),
-            
+
             // See more button
-            if (section.seeMoreText != null)
-              _buildSeeMoreButton(context),
+            if (section.seeMoreText != null) _buildSeeMoreButton(context),
           ],
         ),
       ),
@@ -76,16 +73,13 @@ class ProductSectionWidget extends ConsumerWidget {
                 const SizedBox(height: 4),
                 Text(
                   section.subtitle!,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],
             ],
           ),
         ),
-        
+
         // Optional section banner image
         if (section.imageUrl != null)
           Container(
@@ -112,7 +106,7 @@ class ProductSectionWidget extends ConsumerWidget {
         double childAspectRatio;
         double crossAxisSpacing = 16;
         double mainAxisSpacing = 16;
-        
+
         if (constraints.maxWidth < 600) {
           // Mobile: 1 column
           crossAxisCount = 1;
@@ -161,16 +155,16 @@ class ProductSectionWidget extends ConsumerWidget {
         child: TextButton(
           onPressed: () {
             String? route = section.seeMoreRoute;
-            
+
             if (route == null) {
               // Default action - determine category from section or use first product's category
               String? category;
-              
+
               // Try to get category from first product
               if (section.hasProducts && section.products.isNotEmpty) {
                 category = section.products.first.category.toLowerCase();
               }
-              
+
               // If no category from product, try to extract from section title
               if (category == null || category.isEmpty) {
                 final title = section.title.toLowerCase();
@@ -178,7 +172,8 @@ class ProductSectionWidget extends ConsumerWidget {
                   category = 'electronics';
                 } else if (title.contains('fashion')) {
                   category = 'fashion';
-                } else if (title.contains('home') || title.contains('kitchen')) {
+                } else if (title.contains('home') ||
+                    title.contains('kitchen')) {
                   category = 'home & kitchen';
                 } else if (title.contains('books')) {
                   category = 'books';
@@ -196,7 +191,7 @@ class ProductSectionWidget extends ConsumerWidget {
                   category = 'grocery';
                 }
               }
-              
+
               // Create route with encoded category
               if (category != null && category.isNotEmpty) {
                 route = '/category/${Uri.encodeComponent(category)}';
@@ -204,7 +199,7 @@ class ProductSectionWidget extends ConsumerWidget {
                 route = '/category/all'; // fallback to all products
               }
             }
-            
+
             context.push(route);
           },
           style: TextButton.styleFrom(
@@ -232,4 +227,4 @@ class ProductSectionWidget extends ConsumerWidget {
       ),
     );
   }
-} 
+}

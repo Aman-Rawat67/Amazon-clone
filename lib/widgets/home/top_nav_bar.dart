@@ -371,7 +371,7 @@ class TopNavBar extends ConsumerWidget {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => context.go('/home/cart'),
+        onTap: () => context.go('/cart'),
         child: _HoverEffect(
           child: Container(
             padding: EdgeInsets.symmetric(

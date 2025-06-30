@@ -56,6 +56,29 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     }
   }
 
+  /// Navigate to order success or handle error
+  void _navigateAfterOrder(OrderModel order) {
+    if (!mounted) return;
+    
+    try {
+      if (order.id.isEmpty) {
+        throw Exception('Invalid order ID');
+      }
+      
+      // Use pushReplacement to prevent going back to cart
+      context.pushReplacement('/order-success', extra: order);
+    } catch (e) {
+      print('🔥 Navigation error: $e');
+      _showErrorSnackBar('Error navigating to order success. Redirecting to orders page.');
+      // Fallback navigation
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          context.go('/orders');
+        }
+      });
+    }
+  }
+
   /// Handle Razorpay payment success
   void _handlePaymentSuccess(PaymentSuccessResponse response) async {
     print('🔥 Payment success: ${response.paymentId}');
@@ -71,8 +94,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       }
 
       final cartState = ref.read(cartProvider);
-      final cart = cartState.value;
+      if (cartState.hasError) {
+        throw Exception('Error reading cart: ${cartState.error}');
+      }
       
+      final cart = cartState.value;
       if (cart == null || cart.items.isEmpty) {
         throw Exception('Cart is empty');
       }
@@ -92,26 +118,14 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
       // Clear cart after successful order
       await _orderService.clearCartAfterOrder(user.uid);
-      
-      // Clear cart provider
       await ref.read(cartProvider.notifier).clearCart();
 
-      // Navigate to order success screen
-      if (mounted) {
-        try {
-          if (order.id.isEmpty) {
-            throw Exception('Order ID is empty');
-          }
-          context.go('/home/order-success', extra: order);
-        } catch (navigationError) {
-          print('🔥 Navigation error: $navigationError');
-          // Fallback: Go to orders page or home
-          context.go('/home/orders');
-        }
-      }
+      // Navigate to success screen
+      _navigateAfterOrder(order);
+      
     } catch (e) {
       print('🔥 Error in payment success handler: $e');
-      _showErrorSnackBar('Failed to create order: ${e.toString()}');
+      _showErrorSnackBar('Failed to process order: ${e.toString()}');
     } finally {
       if (mounted) {
         setState(() {
@@ -196,17 +210,20 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     return order.copyWith(id: orderId);
   }
 
-  /// Show error snackbar
-  void _showErrorSnackBar(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    }
+  /// Show error snackbar with retry option if needed
+  void _showErrorSnackBar(String message, {VoidCallback? onRetry}) {
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 5),
+        action: onRetry != null ? SnackBarAction(
+          label: 'Retry',
+          onPressed: onRetry,
+        ) : null,
+      ),
+    );
   }
 
   /// Show test payment dialog (fallback for web platform)
@@ -1207,7 +1224,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => context.go('/home/checkout'),
+              onPressed: () => context.go('/checkout'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF9900),
                 foregroundColor: Colors.black,
@@ -1639,7 +1656,12 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   Future<void> _addRecommendationToCart(ProductModel product) async {
     try {
       final cartNotifier = ref.read(cartProvider.notifier);
-      await cartNotifier.addToCart(product: product, quantity: 1);
+      await cartNotifier.addToCart(
+        product: product,
+        quantity: 1,
+        selectedColor: null,
+        selectedSize: null,
+      );
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

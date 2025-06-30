@@ -11,7 +11,12 @@ import 'package:flutter/foundation.dart';
 
 /// Login screen for user authentication
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  final String? redirectAfter;
+
+  const LoginScreen({
+    super.key,
+    this.redirectAfter,
+  });
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -47,32 +52,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
       
       if (mounted) {
-        // Check if there's a redirect parameter
-        final redirectTo = GoRouterState.of(context).uri.queryParameters['redirect'];
-        if (redirectTo != null && redirectTo.isNotEmpty) {
-          context.go(redirectTo);
+        // Navigate to the redirect destination if provided, otherwise use default route
+        if (widget.redirectAfter != null && widget.redirectAfter!.isNotEmpty) {
+          context.go(widget.redirectAfter!);
+        } else {
+          context.go('/home');
         }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login successful!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: AppColors.error,
+            content: Text('Login failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
           ),
         );
       }
-    }
-
-    if (mounted) {
-      setState(() => _isLoading = false);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

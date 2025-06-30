@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../models/user_model.dart';
 import '../models/order_model.dart';
 import 'auth_provider.dart';
+import 'cart_provider.dart';
 import '../screens/splash_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
@@ -37,10 +38,13 @@ class RouterNotifier extends ChangeNotifier {
 
   RouterNotifier(this._ref) {
     _ref.listen(userProvider, (previous, next) {
-      // Trigger router refresh when auth state changes
       notifyListeners();
     });
   }
+
+  bool get _isAuthenticated => _ref.read(userProvider).asData?.value != null;
+  bool get _isVendor => _ref.read(userProvider).asData?.value?.role == UserRole.vendor;
+  bool get _isAdmin => _ref.read(userProvider).asData?.value?.role == UserRole.admin;
 
   String? redirect(BuildContext context, GoRouterState state) {
     final user = _ref.read(userProvider).asData?.value;
@@ -59,7 +63,6 @@ class RouterNotifier extends ChangeNotifier {
     // Handle product detail routes specially
     if (state.matchedLocation.startsWith('/product/')) {
       if (!isAuthenticated) {
-        // Store the product detail URL to redirect back after login
         _previousLocation = state.matchedLocation;
         return '/login';
       }
@@ -76,7 +79,6 @@ class RouterNotifier extends ChangeNotifier {
     // Auth screen logic
     if (isLoggingIn || isRegistering) {
       if (isAuthenticated) {
-        // If there was a previous location, redirect there
         if (_previousLocation != null) {
           final location = _previousLocation;
           _previousLocation = null;
@@ -94,10 +96,10 @@ class RouterNotifier extends ChangeNotifier {
 
     // Role-based route protection
     if (isAuthenticated) {
-      if (user.role == UserRole.vendor && !state.matchedLocation.startsWith('/vendor')) {
+      if (_isVendor && !state.matchedLocation.startsWith('/vendor')) {
         return '/vendor';
       }
-      if (user.role == UserRole.admin && !state.matchedLocation.startsWith('/admin')) {
+      if (_isAdmin && !state.matchedLocation.startsWith('/admin')) {
         return '/admin';
       }
     }
@@ -119,23 +121,31 @@ class RouterNotifier extends ChangeNotifier {
 
 /// Router provider for app navigation
 final routerProvider = Provider<GoRouter>((ref) {
-  final isAuthenticated = ref.watch(isAuthenticatedProvider);
-  final isVendor = ref.watch(isVendorProvider);
+  final notifier = ref.watch(routerNotifierProvider);
 
   return GoRouter(
-    initialLocation: '/',
+    refreshListenable: notifier,
+    redirect: notifier.redirect,
+    initialLocation: '/splash',
     routes: [
-      // Auth routes
+      // Auth & System Routes
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
       GoRoute(
         path: '/login',
-        builder: (context, state) => const LoginScreen(),
+        builder: (context, state) {
+          final redirectAfter = state.uri.queryParameters['redirect'];
+          return LoginScreen(redirectAfter: redirectAfter);
+        },
       ),
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
       ),
 
-      // Customer routes
+      // Customer Routes
       GoRoute(
         path: '/',
         builder: (context, state) => const DynamicHomeScreen(),
@@ -165,133 +175,120 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final order = state.extra as OrderModel?;
           if (order == null) {
-            // Create a dummy order if none provided
-            return OrderSuccessScreen(
-              order: OrderModel(
-                id: '',
-                userId: '',
-                orderNumber: '',
-                items: [],
-                subtotal: 0,
-                totalAmount: 0,
-                paymentMethod: '',
-                shippingAddress: ShippingAddress(
-                  id: '',
-                  name: '',
-                  phone: '',
-                  address: '',
-                  city: '',
-                  state: '',
-                  zipCode: '',
-                  country: '',
-                ),
-                createdAt: DateTime.now(),
-              ),
-            );
+            return const OrdersScreen();
           }
           return OrderSuccessScreen(order: order);
         },
       ),
       GoRoute(
         path: '/checkout',
-        builder: (context, state) => const CheckoutScreen(),
+        builder: (context, state) {
+          final cartAsync = ref.read(cartProvider);
+          return cartAsync.when(
+            data: (cart) {
+              if (cart == null || cart.items.isEmpty) {
+                return const CartScreen();
+              }
+              return const CheckoutScreen();
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, __) => const CartScreen(),
+          );
+        },
       ),
       GoRoute(
         path: '/product/:id',
-        builder: (context, state) => ProductDetailScreen(
-          productId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) {
+          final productId = state.pathParameters['id']!;
+          return ProductDetailScreen(productId: productId);
+        },
       ),
       GoRoute(
         path: '/category/:category',
-        builder: (context, state) => CategoryProductsScreen(
-          category: state.pathParameters['category']!,
-        ),
+        builder: (context, state) {
+          final category = state.pathParameters['category'] ?? '';
+          final subcategory = state.uri.queryParameters['subcategory'];
+          
+          if (category.isEmpty) {
+            return const DynamicHomeScreen();
+          }
+          
+          return CategoryProductsScreen(
+            category: category,
+            subcategory: subcategory,
+          );
+        },
       ),
       GoRoute(
         path: '/search',
-        builder: (context, state) => SearchResultsScreen(
-          query: state.uri.queryParameters['q'] ?? '',
-          category: state.uri.queryParameters['category'] ?? 'All',
-        ),
+        builder: (context, state) {
+          final query = state.uri.queryParameters['q'] ?? '';
+          return SearchResultsScreen(query: query);
+        },
       ),
 
-      // Vendor routes
+      // Vendor Routes
       GoRoute(
-        path: '/vendor/dashboard',
-        builder: (context, state) => const VendorDashboardScreen(),
-        redirect: (context, state) {
-          if (!isAuthenticated || !isVendor) {
-            return '/login?redirect=${state.uri.path}';
+        path: '/vendor',
+        builder: (context, state) {
+          if (!notifier._isAuthenticated || !notifier._isVendor) {
+            final destination = state.uri.toString();
+            return LoginScreen(redirectAfter: destination);
           }
-          return null;
+          return const VendorDashboardScreen();
         },
       ),
       GoRoute(
         path: '/vendor/products',
-        builder: (context, state) => const VendorProductsScreen(),
-        redirect: (context, state) {
-          if (!isAuthenticated || !isVendor) {
-            return '/login?redirect=${state.uri.path}';
+        builder: (context, state) {
+          if (!notifier._isAuthenticated || !notifier._isVendor) {
+            final destination = state.uri.toString();
+            return LoginScreen(redirectAfter: destination);
           }
-          return null;
+          return const VendorProductsScreen();
         },
       ),
       GoRoute(
         path: '/vendor/add-product',
-        builder: (context, state) => const AddProductScreen(),
-        redirect: (context, state) {
-          if (!isAuthenticated || !isVendor) {
-            return '/login?redirect=${state.uri.path}';
+        builder: (context, state) {
+          if (!notifier._isAuthenticated || !notifier._isVendor) {
+            final destination = state.uri.toString();
+            return LoginScreen(redirectAfter: destination);
           }
-          return null;
+          return const AddProductScreen();
         },
       ),
       GoRoute(
         path: '/vendor/orders',
-        builder: (context, state) => const VendorOrdersScreen(),
-        redirect: (context, state) {
-          if (!isAuthenticated || !isVendor) {
-            return '/login?redirect=${state.uri.path}';
+        builder: (context, state) {
+          if (!notifier._isAuthenticated || !notifier._isVendor) {
+            final destination = state.uri.toString();
+            return LoginScreen(redirectAfter: destination);
           }
-          return null;
+          return const VendorOrdersScreen();
         },
       ),
 
-      // Test Routes
-      GoRoute(
-        path: '/test-dynamic',
-        builder: (context, state) => const TestDynamicHomepage(),
-      ),
-      GoRoute(
-        path: '/debug-firestore',
-        builder: (context, state) => const DebugFirestoreScreen(),
-      ),
-      
       // Admin Routes
       GoRoute(
         path: '/admin',
-        builder: (context, state) => const AdminProductApprovalScreen(),
+        builder: (context, state) {
+          if (!notifier._isAuthenticated || !notifier._isAdmin) {
+            final destination = state.uri.toString();
+            return LoginScreen(redirectAfter: destination);
+          }
+          return const AdminProductApprovalScreen();
+        },
+      ),
+
+      // Debug Routes
+      GoRoute(
+        path: '/debug/firestore',
+        builder: (context, state) => const DebugFirestoreScreen(),
       ),
       GoRoute(
-        path: '/admin/products',
-        builder: (context, state) => const AdminProductApprovalScreen(),
-      ),
-      GoRoute(
-        path: '/admin/approvals',
-        builder: (context, state) => const AdminProductApprovalScreen(),
-      ),
-      GoRoute(
-        path: '/admin/users',
-        builder: (context, state) => const Scaffold(
-          body: Center(child: Text('Manage Users - Coming Soon')),
-        ),
-      ),
-      GoRoute(
-        path: '/admin/orders',
-        builder: (context, state) => const Scaffold(
-          body: Center(child: Text('Admin Orders - Coming Soon')),
-        ),
+        path: '/debug/dynamic-home',
+        builder: (context, state) => const TestDynamicHomepage(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

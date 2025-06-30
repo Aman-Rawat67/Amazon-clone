@@ -234,6 +234,66 @@ class CartModel {
     'isEmpty': isEmpty,
   };
 
+  /// Add a new item to cart or update quantity if exists
+  CartModel addItem(String productId, ProductModel product, int quantity) {
+    final existingItemIndex = items.indexWhere((item) => item.productId == productId);
+    final now = DateTime.now();
+    
+    if (existingItemIndex >= 0) {
+      // Update existing item
+      final updatedItems = List<CartItem>.from(items);
+      final existingItem = items[existingItemIndex];
+      updatedItems[existingItemIndex] = existingItem.copyWith(
+        quantity: existingItem.quantity + quantity
+      );
+      
+      return copyWith(
+        items: updatedItems,
+        updatedAt: now
+      );
+    } else {
+      // Add new item
+      return copyWith(
+        items: [
+          ...items,
+          CartItem(
+            id: '${productId}_${DateTime.now().millisecondsSinceEpoch}',
+            productId: productId,
+            product: product,
+            quantity: quantity,
+            addedAt: now,
+          )
+        ],
+        updatedAt: now
+      );
+    }
+  }
+
+  /// Remove an item from cart
+  CartModel removeItem(String productId) {
+    return copyWith(
+      items: items.where((item) => item.productId != productId).toList(),
+      updatedAt: DateTime.now()
+    );
+  }
+
+  /// Update quantity of an item
+  CartModel updateQuantity(String productId, int quantity) {
+    if (quantity <= 0) {
+      return removeItem(productId);
+    }
+
+    return copyWith(
+      items: items.map((item) {
+        if (item.productId == productId) {
+          return item.copyWith(quantity: quantity);
+        }
+        return item;
+      }).toList(),
+      updatedAt: DateTime.now()
+    );
+  }
+
   @override
   String toString() {
     return 'CartModel(id: $id, userId: $userId, itemCount: ${items.length})';

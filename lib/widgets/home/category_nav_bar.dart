@@ -16,15 +16,6 @@ class CategoryNavBar extends ConsumerStatefulWidget {
 
 class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
   final Map<String, List<String>> categories = {
-    'Clothing': [
-      'Men\'s Fashion',
-      'Women\'s Fashion',
-      'Kids\' Clothing',
-      'Footwear',
-      'Watches',
-      'Jewelry',
-      'Bags & Luggage',
-    ],
     'Electronics': [
       'Mobiles',
       'Laptops',
@@ -34,23 +25,16 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
       'Gaming',
       'Smart Watches',
     ],
-    'Handloom': [
-      'Sarees',
-      'Kurtas',
-      'Dupattas',
-      'Fabrics',
-      'Handicrafts',
-      'Traditional Wear',
+    'Fashion': [
+      'Men\'s Fashion',
+      'Women\'s Fashion',
+      'Kids\' Clothing',
+      'Footwear',
+      'Watches',
+      'Jewelry',
+      'Bags & Luggage',
     ],
-    'Automotive': [
-      'Car Accessories',
-      'Bike Accessories',
-      'Tools & Equipment',
-      'Tyres',
-      'Car Care',
-      'GPS & Navigation',
-    ],
-    'Home': [
+    'Home & Kitchen': [
       'Furniture',
       'Kitchen & Dining',
       'Home Decor',
@@ -66,13 +50,53 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
       'Comics',
       'E-books',
     ],
-    'Health & Personal Care': [
+    'Sports': [
+      'Exercise & Fitness',
+      'Outdoor Recreation',
+      'Team Sports',
+      'Cycling',
+      'Yoga',
+      'Running',
+    ],
+    'Beauty': [
+      'Makeup',
+      'Skincare',
+      'Hair Care',
+      'Fragrances',
+      'Personal Care',
+      'Tools & Accessories',
+    ],
+    'Toys': [
+      'Action Figures',
+      'Board Games',
+      'Educational Toys',
+      'Arts & Crafts',
+      'Building Toys',
+      'Dolls & Accessories',
+    ],
+    'Automotive': [
+      'Car Accessories',
+      'Bike Accessories',
+      'Tools & Equipment',
+      'Car Care',
+      'GPS & Navigation',
+      'Spare Parts',
+    ],
+    'Health': [
       'Health Care',
       'Personal Care',
-      'Beauty',
       'Vitamins',
       'Medical Equipment',
       'Fitness',
+      'Health Food',
+    ],
+    'Grocery': [
+      'Fresh Food',
+      'Beverages',
+      'Snacks',
+      'Household',
+      'Personal Care',
+      'Baby Care',
     ],
   };
 
@@ -157,64 +181,56 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
     return HoverDropdownMenu(
       menuWidth: 220,
       offset: const Offset(0, 4),
-      trigger: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              category,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
+      trigger: InkWell(
+        onTap: () {
+          // Navigate to main category page
+          context.push('/category/${Uri.encodeComponent(category)}');
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                category,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                ),
               ),
-            ),
-            const SizedBox(width: 4),
-            const Icon(
-              Icons.keyboard_arrow_down,
-              color: Colors.white,
-              size: 16,
-            ),
-          ],
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.keyboard_arrow_down,
+                color: Colors.white,
+                size: 16,
+              ),
+            ],
+          ),
         ),
       ),
       menuItems: [
         for (final subcategory in subcategories)
           HoverDropdownItem(
             onTap: () {
-              // Navigate to category products screen with subcategory
-              context.push('/category/$category?subcategory=$subcategory');
+              // Navigate to subcategory
+              final encodedCategory = Uri.encodeComponent(category);
+              final encodedSubcategory = Uri.encodeComponent(subcategory);
+              context.push('/category/$encodedCategory?subcategory=$encodedSubcategory');
             },
-            child: _buildSubcategoryItem(subcategory),
-          ),
-      ],
-    );
-  }
-
-  /// Build subcategory item with hover effect
-  Widget _buildSubcategoryItem(String subcategory) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.arrow_right,
-            size: 16,
-            color: Colors.grey,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              subcategory,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Text(
+                subcategory,
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 14,
+                ),
               ),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 

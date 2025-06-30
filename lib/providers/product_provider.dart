@@ -109,6 +109,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
   Future<void> loadProductsByCategory(String category) async {
     try {
       state = const AsyncValue.loading();
+      // Try both lowercase and original casing
       final products = await _firestoreService.getProductsByCategory(category);
       state = AsyncValue.data(products);
     } catch (e) {

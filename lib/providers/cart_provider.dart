@@ -5,52 +5,48 @@ import '../models/product_model.dart';
 import '../services/firestore_service.dart';
 import 'auth_provider.dart';
 
-/// Provider for cart management with real-time updates
-final cartProvider = StreamNotifierProvider<CartNotifier, CartModel?>(() {
+/// Provider for FirestoreService instance
+final firestoreServiceProvider = Provider<FirestoreService>((ref) => FirestoreService());
+
+/// Provider for managing cart state and operations
+final cartProvider = AsyncNotifierProvider<CartNotifier, CartModel?>(() {
   return CartNotifier();
 });
 
 /// Stream notifier for cart management with real-time Firestore sync
-class CartNotifier extends StreamNotifier<CartModel?> {
-  final FirestoreService _firestoreService = FirestoreService();
+class CartNotifier extends AsyncNotifier<CartModel?> {
+  late final FirestoreService _firestoreService;
   final Uuid _uuid = const Uuid();
   String? _userId;
 
   @override
-  Stream<CartModel?> build() {
-    // Watch userId changes
-    _userId = ref.watch(userIdProvider);
+  Future<CartModel?> build() async {
+    _firestoreService = ref.read(firestoreServiceProvider);
+    _userId = ref.read(userIdProvider);
     
-    if (_userId == null) {
-      // Return empty stream for non-logged in users
-      return Stream.value(null);
-    }
-
+    if (_userId == null) return null;
+    
     try {
-      // Return real-time cart stream
-      return _firestoreService.streamCart(_userId!).handleError((error) {
-        print('🔥 Error streaming cart: $error');
-        return null;
-      });
+      return await _firestoreService.streamCart(_userId!).first;
     } catch (e) {
-      print('🔥 Error building cart stream: $e');
-      return Stream.value(null);
+      throw Exception('Failed to load cart: $e');
     }
   }
 
-  /// Add item to cart with improved duplicate handling
+  /// Add item to cart
   Future<void> addToCart({
     required ProductModel product,
-    int quantity = 1,
+    required int quantity,
     String? selectedColor,
     String? selectedSize,
   }) async {
-    if (_userId == null) {
-      throw Exception('User must be logged in to add items to cart');
-    }
+    if (_userId == null) return;
 
-    try {
-      // Create unique ID for cart item
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final cart = await _firestoreService.streamCart(_userId!).first;
+      
+      // Create a unique ID for the cart item based on product and selections
       final itemId = _createCartItemId(product.id, selectedColor, selectedSize);
       
       final cartItem = CartItem(
@@ -63,77 +59,98 @@ class CartNotifier extends StreamNotifier<CartModel?> {
         addedAt: DateTime.now(),
       );
 
-      await _firestoreService.addToCart(_userId!, cartItem);
-      // No need to manually update state - stream will handle it automatically
-    } catch (e) {
-      rethrow;
-    }
+      final updatedCart = cart?.copyWith(
+        items: [...(cart.items), cartItem],
+        updatedAt: DateTime.now(),
+      ) ?? CartModel(
+        id: _uuid.v4(),
+        userId: _userId!,
+        items: [cartItem],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      await _firestoreService.updateCart(updatedCart);
+      return updatedCart;
+    });
   }
 
   /// Create unique ID for cart item (prevents duplicates)
   String _createCartItemId(String productId, String? selectedColor, String? selectedSize) {
     final colorKey = selectedColor ?? 'default';
     final sizeKey = selectedSize ?? 'default';
-    return '${productId}_${colorKey}_$sizeKey';
-  }
-
-  /// Update cart item quantity
-  Future<void> updateQuantity(String itemId, int quantity) async {
-    if (_userId == null) return;
-
-    try {
-      if (quantity <= 0) {
-        await removeFromCart(itemId);
-        return;
-      }
-
-      await _firestoreService.updateCartItemQuantity(_userId!, itemId, quantity);
-      // No need to manually update state - stream will handle it automatically
-    } catch (e) {
-      rethrow;
-    }
+    return '${productId}_${colorKey}_${sizeKey}';
   }
 
   /// Remove item from cart
-  Future<void> removeFromCart(String itemId) async {
+  Future<void> removeFromCart(String productId) async {
     if (_userId == null) return;
 
-    try {
-      await _firestoreService.removeFromCart(_userId!, itemId);
-      // No need to manually update state - stream will handle it automatically
-    } catch (e) {
-      rethrow;
-    }
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final cart = await _firestoreService.streamCart(_userId!).first;
+      if (cart == null) return null;
+
+      final updatedCart = cart.removeItem(productId);
+      await _firestoreService.updateCart(updatedCart);
+      return updatedCart;
+    });
   }
 
-  /// Clear entire cart
+  /// Update item quantity in cart
+  Future<void> updateQuantity(String productId, int quantity) async {
+    if (_userId == null) return;
+
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final cart = await _firestoreService.streamCart(_userId!).first;
+      if (cart == null) return null;
+
+      final updatedCart = cart.updateQuantity(productId, quantity);
+      await _firestoreService.updateCart(updatedCart);
+      return updatedCart;
+    });
+  }
+
+  /// Clear the cart
   Future<void> clearCart() async {
     if (_userId == null) return;
 
-    try {
-      await _firestoreService.clearCart(_userId!);
-      // No need to manually update state - stream will handle it automatically
-    } catch (e) {
-      rethrow;
-    }
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final cart = await _firestoreService.streamCart(_userId!).first;
+      if (cart == null) return null;
+
+      await _firestoreService.deleteCart(cart.id);
+      return null;
+    });
   }
 
   /// Get total items count from current state
   int getTotalItemsCount() {
     final cart = state.value;
-    return cart?.totalItems ?? 0;
+    if (cart == null) return 0;
+    return cart.items.fold(0, (sum, item) => sum + item.quantity);
   }
 
   /// Get cart subtotal from current state
   double getSubtotal() {
     final cart = state.value;
-    return cart?.totalPrice ?? 0.0;
+    if (cart == null) return 0.0;
+    return cart.items.fold(0.0, (sum, item) => sum + (item.product.price * item.quantity));
   }
 
-  /// Get cart total including shipping
+  /// Get cart total including shipping and tax
   double getTotal() {
-    final cart = state.value;
-    return cart?.total ?? 0.0;
+    final subtotal = getSubtotal();
+    final shipping = calculateShipping(subtotal);
+    final tax = subtotal * 0.05; // 5% tax
+    return subtotal + shipping + tax;
+  }
+
+  /// Check if cart has items
+  bool hasItems() {
+    return state.value?.items.isNotEmpty ?? false;
   }
 
   /// Calculate cart total with central function
