@@ -4,14 +4,14 @@ import '../constants/app_constants.dart';
 class Validators {
   Validators._();
 
-  /// Validates email address
+  /// Validates email
   static String? validateEmail(String? value) {
     if (value == null || value.isEmpty) {
-      return AppConstants.emailRequiredMessage;
+      return 'Please enter your email';
     }
     
-    if (!RegExp(AppConstants.emailRegex).hasMatch(value)) {
-      return AppConstants.emailInvalidMessage;
+    if (!value.contains('@') || !value.contains('.')) {
+      return 'Please enter a valid email address';
     }
     
     return null;
@@ -20,28 +20,11 @@ class Validators {
   /// Validates password
   static String? validatePassword(String? value) {
     if (value == null || value.isEmpty) {
-      return AppConstants.passwordRequiredMessage;
+      return 'Please enter your password';
     }
     
-    if (value.length < AppConstants.minPasswordLength) {
-      return AppConstants.passwordTooShortMessage;
-    }
-    
-    return null;
-  }
-
-  /// Validates password with strength requirements
-  static String? validateStrongPassword(String? value) {
-    if (value == null || value.isEmpty) {
-      return AppConstants.passwordRequiredMessage;
-    }
-    
-    if (value.length < AppConstants.minPasswordLength) {
-      return AppConstants.passwordTooShortMessage;
-    }
-    
-    if (!RegExp(AppConstants.passwordRegex).hasMatch(value)) {
-      return 'Password must contain at least one uppercase letter, one lowercase letter, and one number';
+    if (value.length < 6) {
+      return 'Password must be at least 6 characters';
     }
     
     return null;
@@ -50,7 +33,7 @@ class Validators {
   /// Validates confirm password
   static String? validateConfirmPassword(String? value, String password) {
     if (value == null || value.isEmpty) {
-      return 'Confirm password is required';
+      return 'Please confirm your password';
     }
     
     if (value != password) {
@@ -63,15 +46,11 @@ class Validators {
   /// Validates name
   static String? validateName(String? value) {
     if (value == null || value.isEmpty) {
-      return AppConstants.nameRequiredMessage;
+      return 'Please enter your name';
     }
     
-    if (value.length < AppConstants.minNameLength) {
-      return 'Name must be at least ${AppConstants.minNameLength} characters';
-    }
-    
-    if (value.length > AppConstants.maxNameLength) {
-      return 'Name must be less than ${AppConstants.maxNameLength} characters';
+    if (value.length < 2) {
+      return 'Name must be at least 2 characters';
     }
     
     return null;
@@ -80,14 +59,15 @@ class Validators {
   /// Validates phone number
   static String? validatePhone(String? value) {
     if (value == null || value.isEmpty) {
-      return AppConstants.phoneRequiredMessage;
+      return 'Please enter your phone number';
     }
     
     // Remove all non-digit characters for validation
     String cleaned = value.replaceAll(RegExp(r'[^\d+]'), '');
     
-    if (!RegExp(AppConstants.phoneRegex).hasMatch(cleaned)) {
-      return 'Please enter a valid phone number';
+    // Check for 10 digits
+    if (!RegExp(r'^\d{10}$').hasMatch(cleaned)) {
+      return 'Please enter a valid 10-digit phone number';
     }
     
     return null;
@@ -96,7 +76,7 @@ class Validators {
   /// Validates required field
   static String? validateRequired(String? value, String fieldName) {
     if (value == null || value.isEmpty) {
-      return '$fieldName is required';
+      return 'Please enter $fieldName';
     }
     return null;
   }
@@ -104,11 +84,11 @@ class Validators {
   /// Validates address
   static String? validateAddress(String? value) {
     if (value == null || value.isEmpty) {
-      return AppConstants.addressRequiredMessage;
+      return 'Please enter your address';
     }
     
-    if (value.length < 10) {
-      return 'Address must be at least 10 characters';
+    if (value.length < 5) {
+      return 'Please enter a complete address';
     }
     
     return null;
@@ -117,15 +97,41 @@ class Validators {
   /// Validates ZIP code
   static String? validateZipCode(String? value) {
     if (value == null || value.isEmpty) {
-      return 'ZIP code is required';
+      return 'Please enter your PIN code';
     }
     
-    // Basic validation for various ZIP code formats
-    if (value.length < 5 || value.length > 10) {
-      return 'Please enter a valid ZIP code';
+    // Validate 6-digit PIN code
+    if (!RegExp(r'^\d{6}$').hasMatch(value)) {
+      return 'Please enter a valid 6-digit PIN code';
     }
     
     return null;
+  }
+
+  /// Validates city
+  static String? validateCity(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your city';
+    }
+    return null;
+  }
+
+  /// Validates state
+  static String? validateState(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your state';
+    }
+    return null;
+  }
+
+  /// Validates landmark (optional)
+  static String? validateLandmark(String? value) {
+    return null; // Landmark is optional
+  }
+
+  /// Validates delivery instructions (optional)
+  static String? validateDeliveryInstructions(String? value) {
+    return null; // Delivery instructions are optional
   }
 
   /// Validates price

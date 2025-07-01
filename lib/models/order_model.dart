@@ -34,6 +34,7 @@ class ShippingAddress {
   final String zipCode;
   final String country;
   final bool isDefault;
+  final String? deliveryInstructions;
   
   const ShippingAddress({
     required this.id,
@@ -45,7 +46,25 @@ class ShippingAddress {
     required this.zipCode,
     required this.country,
     this.isDefault = false,
+    this.deliveryInstructions,
   });
+
+  /// Creates a ShippingAddress from a pipe-delimited string
+  factory ShippingAddress.fromString(String addressString) {
+    final parts = addressString.split('|');
+    return ShippingAddress(
+      id: parts[0],
+      name: parts[1],
+      phone: parts[2],
+      address: parts[3],
+      city: parts[4],
+      state: parts[5],
+      zipCode: parts[6],
+      country: parts[7],
+      isDefault: parts[8].toLowerCase() == 'true',
+      deliveryInstructions: parts.length > 9 ? parts[9] : null,
+    );
+  }
 
   /// Creates a ShippingAddress from JSON data
   factory ShippingAddress.fromJson(Map<String, dynamic> json) {
@@ -59,6 +78,7 @@ class ShippingAddress {
       zipCode: json['zipCode'] as String,
       country: json['country'] as String,
       isDefault: json['isDefault'] as bool? ?? false,
+      deliveryInstructions: json['deliveryInstructions'] as String?,
     );
   }
 
@@ -74,6 +94,7 @@ class ShippingAddress {
       'zipCode': zipCode,
       'country': country,
       'isDefault': isDefault,
+      'deliveryInstructions': deliveryInstructions,
     };
   }
 

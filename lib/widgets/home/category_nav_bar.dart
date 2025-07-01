@@ -199,36 +199,19 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
                   fontWeight: FontWeight.w400,
                 ),
               ),
-              const SizedBox(width: 4),
-              const Icon(
-                Icons.keyboard_arrow_down,
-                color: Colors.white,
-                size: 16,
-              ),
+              const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
             ],
           ),
         ),
       ),
-      menuItems: [
-        for (final subcategory in subcategories)
+      items: [
+        for (var subcategory in subcategories)
           HoverDropdownItem(
+            text: subcategory,
             onTap: () {
-              // Navigate to subcategory
-              final encodedCategory = Uri.encodeComponent(category);
-              final encodedSubcategory = Uri.encodeComponent(subcategory);
-              context.push('/category/$encodedCategory?subcategory=$encodedSubcategory');
+              context.push('/category/${Uri.encodeComponent(category)}/${Uri.encodeComponent(subcategory)}');
             },
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Text(
-                subcategory,
-                style: const TextStyle(
-                  color: Colors.black87,
-                  fontSize: 14,
-                ),
-              ),
-            ),
+            showDivider: subcategory != subcategories.last,
           ),
       ],
     );

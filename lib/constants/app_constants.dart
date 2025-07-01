@@ -142,10 +142,15 @@ class AppConstants {
   static const int maxReviewCharacters = 500;
 
   // Validation
-  static const int minPasswordLength = 6;
+  static const int minPasswordLength = 8;
   static const int maxPasswordLength = 50;
   static const int minNameLength = 2;
   static const int maxNameLength = 50;
+  static const int minAddressLength = 5;
+  static const int maxAddressLength = 100;
+  static const int maxLandmarkLength = 100;
+  static const int maxDeliveryInstructionsLength = 500;
+  static const int pinCodeLength = 6;
 
   // File Sizes (in bytes)
   static const int maxImageSize = 5 * 1024 * 1024; // 5MB
@@ -190,20 +195,37 @@ class AppConstants {
   static const String orderPlacedMessage = 'Order placed successfully!';
   static const String profileUpdatedMessage = 'Profile updated successfully!';
   static const String addressAddedMessage = 'Address added successfully!';
+  static const String addressUpdatedMessage = 'Address updated successfully!';
+  static const String addressDeletedMessage = 'Address deleted successfully!';
 
   // Validation Messages
   static const String emailRequiredMessage = 'Email is required';
-  static const String emailInvalidMessage = 'Please enter a valid email';
+  static const String emailInvalidMessage = 'Please enter a valid email address';
   static const String passwordRequiredMessage = 'Password is required';
-  static const String passwordTooShortMessage = 'Password must be at least 6 characters';
+  static const String confirmPasswordRequiredMessage = 'Confirm password is required';
   static const String nameRequiredMessage = 'Name is required';
   static const String phoneRequiredMessage = 'Phone number is required';
   static const String addressRequiredMessage = 'Address is required';
+  static const String pinCodeRequiredMessage = 'PIN code is required';
+  static const String cityRequiredMessage = 'City is required';
+  static const String stateRequiredMessage = 'State is required';
+  static const String flatRequiredMessage = 'Flat/House No. is required';
+  static const String areaRequiredMessage = 'Area/Street is required';
+  static const String invalidPhoneMessage = 'Please enter a valid 10-digit mobile number';
+  static const String invalidPinCodeMessage = 'Please enter a valid 6-digit PIN code';
+  static const String invalidAddressMessage = 'Address contains invalid characters';
+  static const String invalidLandmarkMessage = 'Landmark contains invalid characters';
+  static const String invalidCityMessage = 'City name can only contain letters, spaces, dots, and hyphens';
+  static const String invalidStateMessage = 'State name can only contain letters, spaces, dots, and hyphens';
 
-  // Regular Expressions
+  // Validation patterns
   static const String emailRegex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
-  static const String phoneRegex = r'^\+?[1-9]\d{1,14}$';
-  static const String passwordRegex = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{6,}$';
+  static const String passwordRegex = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$';
+  static const String phoneRegex = r'^(\+91)?[6-9]\d{9}$';
+  static const String pinCodeRegex = r'^\d{6}$';
+  static const String nameRegex = r'^[a-zA-Z\s]+$';
+  static const String cityStateRegex = r'^[a-zA-Z\s\.\-]+$';
+  static const String addressRegex = r'^[a-zA-Z0-9\s\,\.\-\/\#\&]+$';
 
   // Date Formats
   static const String dateFormat = 'dd/MM/yyyy';
@@ -220,6 +242,46 @@ class AppConstants {
   static const String successAnimation = 'assets/animations/success.json';
   static const String errorAnimation = 'assets/animations/error.json';
   static const String emptyCartAnimation = 'assets/animations/empty_cart.json';
+
+  // Indian States
+  static const List<String> indianStates = [
+    'Andhra Pradesh',
+    'Arunachal Pradesh',
+    'Assam',
+    'Bihar',
+    'Chhattisgarh',
+    'Goa',
+    'Gujarat',
+    'Haryana',
+    'Himachal Pradesh',
+    'Jharkhand',
+    'Karnataka',
+    'Kerala',
+    'Madhya Pradesh',
+    'Maharashtra',
+    'Manipur',
+    'Meghalaya',
+    'Mizoram',
+    'Nagaland',
+    'Odisha',
+    'Punjab',
+    'Rajasthan',
+    'Sikkim',
+    'Tamil Nadu',
+    'Telangana',
+    'Tripura',
+    'Uttar Pradesh',
+    'Uttarakhand',
+    'West Bengal',
+    'Andaman and Nicobar Islands',
+    'Chandigarh',
+    'Dadra and Nagar Haveli and Daman and Diu',
+    'Delhi',
+    'Jammu and Kashmir',
+    'Ladakh',
+    'Lakshadweep',
+    'Puducherry',
+  ];
 }
 
 /// Color constants for the app theme

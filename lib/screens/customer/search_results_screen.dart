@@ -55,6 +55,7 @@ class _SearchResultsScreenState extends ConsumerState<SearchResultsScreen> {
         title: SearchBarWidget(
           initialQuery: currentQuery,
           onSearch: _performSearch,
+          isSmallScreen: isSmallScreen,
         ),
         automaticallyImplyLeading: true,
         titleSpacing: 0,
@@ -198,11 +199,8 @@ class _SearchResultsScreenState extends ConsumerState<SearchResultsScreen> {
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton(
-                        onPressed: () => _performSearch(currentQuery),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF3A847),
-                        ),
-                        child: const Text('Try Again'),
+                        onPressed: () => _performSearch(currentQuery, category: currentCategory),
+                        child: const Text('Try again'),
                       ),
                     ],
                   ),

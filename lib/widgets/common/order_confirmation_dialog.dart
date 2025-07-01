@@ -273,6 +273,17 @@ class OrderConfirmationDialog extends StatelessWidget {
                   color: Colors.grey.shade700,
                 ),
               ),
+              if (deliveryAddress.deliveryInstructions?.isNotEmpty == true) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Delivery Instructions: ${deliveryAddress.deliveryInstructions}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
