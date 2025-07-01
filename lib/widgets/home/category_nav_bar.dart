@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../providers/product_provider.dart';
 import 'hover_dropdown_menu.dart';
 
 /// Provider for currently hovered category
@@ -15,90 +16,78 @@ class CategoryNavBar extends ConsumerStatefulWidget {
 }
 
 class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
+  bool _isNavigating = false;
+
   final Map<String, List<String>> categories = {
+    'Clothing': [
+      'Men',
+      'Women',
+      'Unisex',
+      'Boy',
+      'Girl',
+    ],
     'Electronics': [
-      'Mobiles',
-      'Laptops',
-      'Tablets',
-      'Cameras',
-      'Headphones',
-      'Gaming',
-      'Smart Watches',
+      'Mobile Phones',
+      'Computers & Laptops',
+      'Audio Devices',
+      'Home Appliances',
     ],
-    'Fashion': [
-      'Men\'s Fashion',
-      'Women\'s Fashion',
-      'Kids\' Clothing',
-      'Footwear',
-      'Watches',
-      'Jewelry',
-      'Bags & Luggage',
-    ],
-    'Home & Kitchen': [
-      'Furniture',
-      'Kitchen & Dining',
-      'Home Decor',
-      'Bedding',
-      'Storage',
-      'Garden & Outdoor',
-    ],
-    'Books': [
-      'Fiction',
-      'Non-Fiction',
-      'Educational',
-      'Children\'s Books',
-      'Comics',
-      'E-books',
-    ],
-    'Sports': [
-      'Exercise & Fitness',
-      'Outdoor Recreation',
-      'Team Sports',
-      'Cycling',
-      'Yoga',
-      'Running',
-    ],
-    'Beauty': [
-      'Makeup',
-      'Skincare',
-      'Hair Care',
-      'Fragrances',
-      'Personal Care',
-      'Tools & Accessories',
-    ],
-    'Toys': [
-      'Action Figures',
-      'Board Games',
-      'Educational Toys',
-      'Arts & Crafts',
-      'Building Toys',
-      'Dolls & Accessories',
+    'Handloom': [
+      'Bedsheets',
+      'Curtains',
+      'Mattress',
+      'Pillow',
     ],
     'Automotive': [
-      'Car Accessories',
-      'Bike Accessories',
-      'Tools & Equipment',
-      'Car Care',
-      'GPS & Navigation',
-      'Spare Parts',
+      'Car Perfume',
+      'Stereo',
+      'Dash Cam',
+      'Cameras',
     ],
-    'Health': [
-      'Health Care',
-      'Personal Care',
-      'Vitamins',
-      'Medical Equipment',
-      'Fitness',
-      'Health Food',
-    ],
-    'Grocery': [
-      'Fresh Food',
-      'Beverages',
-      'Snacks',
-      'Household',
-      'Personal Care',
-      'Baby Care',
+    'Home': [
+      'Kitchen',
+      'Gardening',
+      'Interior',
+      'Furniture',
     ],
   };
+
+  void _navigateToCategory(BuildContext context, String category) {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    // First update the filters
+    ref.read(productFiltersProvider.notifier).updateFilters(
+      category: category,
+      subcategory: null,
+    );
+
+    // Then navigate after a short delay to ensure state is updated
+    Future.microtask(() {
+      final encodedCategory = Uri.encodeComponent(category);
+      context.go('/category/$encodedCategory');
+      _isNavigating = false;
+    });
+  }
+
+  void _navigateToSubcategory(BuildContext context, String category, String subcategory) {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    // First update the filters
+    ref.read(productFiltersProvider.notifier).updateFilters(
+      category: category,
+      subcategory: subcategory,
+    );
+
+    // Then navigate after a short delay to ensure state is updated
+    Future.microtask(() {
+      final encodedCategory = Uri.encodeComponent(category);
+      final encodedSubcategory = Uri.encodeComponent(subcategory);
+      context.go('/category/$encodedCategory/subcategory/$encodedSubcategory');
+      _isNavigating = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -133,37 +122,61 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
             children: [
               // All menu with hamburger icon (fixed width)
               SizedBox(
-                width: 70,
+                width: 100,
                 child: _buildAllMenuItem(),
               ),
-              const SizedBox(width: 16),
               
-              // Scrollable categories section (takes remaining space)
+              // Categories with dropdowns
               Expanded(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  child: IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Main categories (responsive count)
-                        ...categories.keys.take(_getCategoryCount(availableWidth)).map((category) => 
-                          Padding(
-                            padding: const EdgeInsets.only(right: 20),
-                            child: _buildCategoryDropdown(context, category),
-                          ),
-                        ),
+                  child: Row(
+                    children: [
+                      ...categories.entries.take(_getCategoryCount(availableWidth)).map((entry) {
+                        final category = entry.key;
+                        final subcategories = entry.value;
                         
-                        // Additional navigation items (responsive)
-                        ..._getAdditionalItems(availableWidth).map((item) =>
-                          Padding(
-                            padding: const EdgeInsets.only(right: 20),
-                            child: _buildAdditionalItem(item),
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 16),
+                          child: HoverDropdownMenu(
+                            menuWidth: 220,
+                            offset: const Offset(0, 4),
+                            trigger: InkWell(
+                              onTap: () => _navigateToCategory(context, category),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      category,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                    const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            items: [
+                              for (int i = 0; i < subcategories.length; i++) ...[
+                                HoverDropdownItem(
+                                  text: subcategories[i],
+                                  onTap: () => _navigateToSubcategory(context, category, subcategories[i]),
+                                ),
+                                if (i < subcategories.length - 1) const HoverDropdownDivider(),
+                              ],
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
+                        );
+                      }).toList(),
+                      
+                      // Additional navigation items based on width
+                      ..._getAdditionalItems(availableWidth).map(_buildAdditionalItem),
+                    ],
                   ),
                 ),
               ),
@@ -174,57 +187,32 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
     );
   }
 
-  /// Build category dropdown with subcategories
-  Widget _buildCategoryDropdown(BuildContext context, String category) {
-    final subcategories = categories[category] ?? [];
-    
-    return HoverDropdownMenu(
-      menuWidth: 220,
-      offset: const Offset(0, 4),
-      trigger: InkWell(
-        onTap: () {
-          // Navigate to main category page with properly encoded URL
-          final encodedCategory = Uri.encodeComponent(category.toLowerCase());
-          context.push('/category/$encodedCategory');
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                category,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
+  /// Build mobile navigation with categories
+  Widget _buildMobileNavigation(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          ...categories.keys.map((category) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: TextButton(
+                onPressed: () => _navigateToCategory(context, category),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
                 ),
+                child: Text(category),
               ),
-              const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
-            ],
-          ),
-        ),
-      ),
-      items: [
-        for (int i = 0; i < subcategories.length; i++) ...[
-          HoverDropdownItem(
-            text: subcategories[i],
-            onTap: () {
-              // Navigate to subcategory with properly encoded parameters
-              final encodedCategory = Uri.encodeComponent(category.toLowerCase());
-              final encodedSubcategory = Uri.encodeComponent(subcategories[i]);
-              context.push('/category/$encodedCategory?subcategory=$encodedSubcategory');
-            },
-          ),
-          if (i < subcategories.length - 1) const HoverDropdownDivider(),
+            );
+          }).toList(),
         ],
-      ],
+      ),
     );
   }
 
   /// Get category count based on available width
   int _getCategoryCount(double width) {
-    if (width > 1200) return 7; // All categories
+    if (width > 1200) return categories.length;
     if (width > 900) return 5;  // Most categories
     if (width > 768) return 3;  // Essential categories
     return 2; // Minimal categories
@@ -274,74 +262,11 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
             style: TextStyle(
               color: Colors.white,
               fontSize: 14,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w400,
             ),
           ),
         ],
       ),
-    );
-  }
-
-  /// Build mobile navigation with collapsible menu
-  Widget _buildMobileNavigation(BuildContext context) {
-    return ExpansionTile(
-      title: Row(
-        children: [
-          const Icon(Icons.menu, color: Colors.white, size: 20),
-          const SizedBox(width: 8),
-          const Text(
-            'All Categories',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-      collapsedIconColor: Colors.white,
-      iconColor: Colors.white,
-      backgroundColor: const Color(0xFF232F3E),
-      collapsedBackgroundColor: const Color(0xFF232F3E),
-      children: [
-        Container(
-          color: Colors.white,
-          child: ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: categories.length,
-            itemBuilder: (context, index) {
-              final category = categories.keys.elementAt(index);
-              final subcategories = categories[category] ?? [];
-              
-              return ExpansionTile(
-                title: Text(
-                  category,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                children: [
-                  for (final subcategory in subcategories)
-                    ListTile(
-                      contentPadding: const EdgeInsets.only(left: 32, right: 16),
-                      leading: const Icon(Icons.arrow_right, size: 16),
-                      title: Text(
-                        subcategory,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      onTap: () {
-                        // Navigate to category products screen with subcategory
-                        context.push('/category/$category?subcategory=$subcategory');
-                      },
-                    ),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
     );
   }
 } 

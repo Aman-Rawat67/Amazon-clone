@@ -4,9 +4,6 @@ import '../models/product_model.dart';
 import '../services/firestore_service.dart';
 import '../constants/filter_constants.dart';
 
-/// Provider for Firestore service
-final firestoreServiceProvider = Provider<FirestoreService>((ref) => FirestoreService());
-
 /// Provider for product management
 final productProvider = StateNotifierProvider<ProductNotifier, AsyncValue<List<ProductModel>>>((ref) {
   final firestoreService = ref.watch(firestoreServiceProvider);
@@ -109,8 +106,9 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
   Future<void> loadProductsByCategory(String category) async {
     try {
       state = const AsyncValue.loading();
-      // Try both lowercase and original casing
-      final products = await _firestoreService.getProductsByCategory(category);
+      // Use normalized lowercase category
+      final normalizedCategory = category.trim().toLowerCase();
+      final products = await _firestoreService.getProductsByCategory(normalizedCategory);
       state = AsyncValue.data(products);
     } catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
@@ -123,7 +121,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
       state = const AsyncValue.loading();
       final products = await _firestoreService.searchProducts(
         query: searchQuery,
-        category: category,
+        category: category?.trim().toLowerCase(),
       );
       state = AsyncValue.data(products);
     } catch (e) {
@@ -196,204 +194,312 @@ final categoriesProvider = FutureProvider<List<String>>((ref) async {
   return await firestoreService.getCategories();
 });
 
-/// Product filter state class
+/// Class to hold all product filter states
 class ProductFilters {
+  final String? category;
+  final String? subcategory;
   final SortOption sortBy;
   final double? minPrice;
   final double? maxPrice;
   final double? minRating;
-  final String? category;
-  final String? subcategory;
-  final String? priceRange;
-  
-  ProductFilters({
+
+  const ProductFilters({
+    this.category,
+    this.subcategory,
     this.sortBy = SortOption.newest,
     this.minPrice,
     this.maxPrice,
     this.minRating,
-    this.category,
-    this.subcategory,
-    this.priceRange,
   });
 
-  /// Whether any filters are active
-  bool get hasActiveFilters {
-    return sortBy != SortOption.newest ||
-           minPrice != null ||
-           maxPrice != null ||
-           minRating != null ||
-           priceRange != null;
-  }
+  bool get hasActiveFilters =>
+      category != null ||
+      subcategory != null ||
+      sortBy != SortOption.newest ||
+      minPrice != null ||
+      maxPrice != null ||
+      minRating != null;
 
   ProductFilters copyWith({
+    String? category,
+    String? subcategory,
     SortOption? sortBy,
     double? minPrice,
     double? maxPrice,
     double? minRating,
-    String? category,
-    String? subcategory,
-    String? priceRange,
+    bool clearCategory = false,
+    bool clearSubcategory = false,
+    bool clearPriceRange = false,
+    bool clearRating = false,
   }) {
     return ProductFilters(
+      category: clearCategory ? null : (category ?? this.category),
+      subcategory: clearSubcategory ? null : (subcategory ?? this.subcategory),
       sortBy: sortBy ?? this.sortBy,
-      minPrice: minPrice ?? this.minPrice,
-      maxPrice: maxPrice ?? this.maxPrice,
-      minRating: minRating ?? this.minRating,
-      category: category ?? this.category,
-      subcategory: subcategory ?? this.subcategory,
-      priceRange: priceRange ?? this.priceRange,
+      minPrice: clearPriceRange ? null : (minPrice ?? this.minPrice),
+      maxPrice: clearPriceRange ? null : (maxPrice ?? this.maxPrice),
+      minRating: clearRating ? null : (minRating ?? this.minRating),
     );
   }
-}
 
-/// Provider for product filters
-final productFiltersProvider = StateNotifierProvider<ProductFiltersNotifier, ProductFilters>((ref) {
-  return ProductFiltersNotifier(ref);
-});
-
-/// Notifier for product filters
-class ProductFiltersNotifier extends StateNotifier<ProductFilters> {
-  final Ref _ref;
-
-  ProductFiltersNotifier(this._ref) : super(ProductFilters());
-
-  /// Update sort option
-  void updateSortBy(SortOption sortBy) {
-    if (state.sortBy != sortBy) {
-      state = state.copyWith(sortBy: sortBy);
-      // Don't reset other filters when changing sort
-      _refreshProducts(forceRefresh: false);
-    }
+  Map<String, dynamic> toMap() {
+    return {
+      'category': category?.trim().toLowerCase(),
+      'subcategory': subcategory?.trim().toLowerCase(),
+      'sortBy': sortBy.toString(),
+      'minPrice': minPrice,
+      'maxPrice': maxPrice,
+      'minRating': minRating,
+    };
   }
 
-  /// Update price range
-  void updatePriceRange(double? minPrice, double? maxPrice) {
-    if (state.minPrice != minPrice || state.maxPrice != maxPrice) {
-      state = state.copyWith(
-        minPrice: minPrice,
-        maxPrice: maxPrice,
-        // Reset other filters when price range is selected
-        minRating: null,
-      );
-      _refreshProducts();
-    }
+  @override
+  String toString() {
+    return 'ProductFilters(category: $category, subcategory: $subcategory, sortBy: $sortBy, minPrice: $minPrice, maxPrice: $maxPrice, minRating: $minRating)';
   }
 
-  /// Update minimum rating
-  void updateRating(double? rating) {
-    if (state.minRating != rating) {
-      state = state.copyWith(
-        minRating: rating,
-        // Reset price filters when rating is selected
-        minPrice: null,
-        maxPrice: null,
-      );
-      _refreshProducts();
-    }
-  }
-
-  /// Update category
-  void updateCategory(String? category) {
-    if (state.category != category) {
-      state = state.copyWith(
-        category: category,
-        // Reset all other filters when category changes
-        minPrice: null,
-        maxPrice: null,
-        minRating: null,
-        sortBy: SortOption.newest,
-      );
-      _refreshProducts();
-    }
-  }
-
-  /// Reset all filters
-  void resetFilters() {
-    if (state.hasActiveFilters) {
-      state = ProductFilters();
-      _refreshProducts();
-    }
-  }
-
-  /// Refresh products with current filters
-  void _refreshProducts({bool forceRefresh = true}) {
-    // Force refresh of filtered products
-    _ref.invalidate(filteredProductsProvider);
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
     
-    // Only reload products if we're forcing a refresh or have category/search filters
-    if (forceRefresh || state.category != null) {
-      _ref.read(productProvider.notifier).loadProducts(
-        category: state.category,
-        sortBy: state.sortBy,
-        refresh: true,
-      );
-    }
+    return other is ProductFilters &&
+        other.category?.trim().toLowerCase() == category?.trim().toLowerCase() &&
+        other.subcategory?.trim().toLowerCase() == subcategory?.trim().toLowerCase() &&
+        other.sortBy == sortBy &&
+        other.minPrice == minPrice &&
+        other.maxPrice == maxPrice &&
+        other.minRating == minRating;
+  }
+
+  @override
+  int get hashCode {
+    return category.hashCode ^
+        subcategory.hashCode ^
+        sortBy.hashCode ^
+        minPrice.hashCode ^
+        maxPrice.hashCode ^
+        minRating.hashCode;
   }
 }
 
 /// Provider for filtered products
-final filteredProductsProvider = Provider<AsyncValue<List<ProductModel>>>((ref) {
-  final filters = ref.watch(productFiltersProvider);
-  final productsAsyncValue = ref.watch(productProvider);
+final filteredProductsProvider = StateNotifierProvider<ProductsNotifier, AsyncValue<List<ProductModel>>>((ref) {
+  return ProductsNotifier(ref);
+});
 
-  return productsAsyncValue.when(
-    loading: () => const AsyncValue.loading(),
-    error: (error, stack) => AsyncValue.error(error, stack),
-    data: (products) {
-      // Create a mutable copy of the products list
-      var filteredProducts = List<ProductModel>.from(products);
+/// Provider for product filters
+final productFiltersProvider = StateNotifierProvider<ProductFiltersNotifier, ProductFilters>((ref) {
+  return ProductFiltersNotifier();
+});
 
-      // Apply sorting first
+/// Notifier for product filters
+class ProductFiltersNotifier extends StateNotifier<ProductFilters> {
+  ProductFiltersNotifier() : super(const ProductFilters());
+
+  void updateCategory(String? category) {
+    if (category?.toLowerCase() == state.category?.toLowerCase()) return;
+    state = state.copyWith(
+      category: category,
+      clearSubcategory: true, // Clear subcategory when category changes
+    );
+  }
+
+  void updateSubcategory(String? subcategory) {
+    if (subcategory?.toLowerCase() == state.subcategory?.toLowerCase()) return;
+    state = state.copyWith(subcategory: subcategory);
+  }
+
+  void updateSortBy(SortOption sortBy) {
+    if (sortBy == state.sortBy) return;
+    state = state.copyWith(sortBy: sortBy);
+  }
+
+  void updatePriceRange(double? minPrice, double? maxPrice) {
+    // Validate price range
+    if (minPrice != null && maxPrice != null && minPrice > maxPrice) {
+      final temp = minPrice;
+      minPrice = maxPrice;
+      maxPrice = temp;
+    }
+    
+    if (minPrice == state.minPrice && maxPrice == state.maxPrice) return;
+    state = state.copyWith(
+      minPrice: minPrice,
+      maxPrice: maxPrice,
+    );
+  }
+
+  void updateRating(double? minRating) {
+    if (minRating == state.minRating) return;
+    state = state.copyWith(minRating: minRating);
+  }
+
+  void resetFilters() {
+    if (state == const ProductFilters()) return;
+    state = const ProductFilters();
+  }
+
+  void updateFilters({
+    String? category,
+    String? subcategory,
+    SortOption? sortBy,
+    double? minPrice,
+    double? maxPrice,
+    double? minRating,
+  }) {
+    // Validate price range
+    if (minPrice != null && maxPrice != null && minPrice > maxPrice) {
+      final temp = minPrice;
+      minPrice = maxPrice;
+      maxPrice = temp;
+    }
+
+    // Skip update if all values are the same
+    if (category?.toLowerCase() == state.category?.toLowerCase() &&
+        subcategory?.toLowerCase() == state.subcategory?.toLowerCase() &&
+        sortBy == state.sortBy &&
+        minPrice == state.minPrice &&
+        maxPrice == state.maxPrice &&
+        minRating == state.minRating) {
+      return;
+    }
+
+    state = state.copyWith(
+      category: category,
+      subcategory: subcategory,
+      sortBy: sortBy,
+      minPrice: minPrice,
+      maxPrice: maxPrice,
+      minRating: minRating,
+    );
+  }
+}
+
+class ProductsNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
+  final Ref _ref;
+  final FirestoreService _firestoreService;
+  ProductFilters _filters = const ProductFilters();
+
+  ProductsNotifier(this._ref)
+      : _firestoreService = _ref.read(firestoreServiceProvider),
+        super(const AsyncValue.loading()) {
+    _loadProducts();
+
+    // Listen to filter changes
+    _ref.listen(productFiltersProvider, (previous, next) {
+      if (previous != next) {
+        _filters = next;
+        _loadProducts();
+      }
+    });
+  }
+
+  Future<void> _loadProducts() async {
+    try {
+      state = const AsyncValue.loading();
+      final products = await _applyFilters(_filters);
+      
+      if (products.isEmpty) {
+        // If no products found with current filters, try without subcategory
+        if (_filters.subcategory != null) {
+          final filtersWithoutSubcategory = _filters.copyWith(clearSubcategory: true);
+          final productsWithoutSubcategory = await _applyFilters(filtersWithoutSubcategory);
+          if (productsWithoutSubcategory.isNotEmpty) {
+            state = AsyncValue.data(productsWithoutSubcategory);
+            return;
+          }
+        }
+        
+        // If still no products, try without category and subcategory
+        if (_filters.category != null) {
+          final filtersWithoutCategory = _filters.copyWith(clearCategory: true, clearSubcategory: true);
+          final productsWithoutCategory = await _applyFilters(filtersWithoutCategory);
+          if (productsWithoutCategory.isNotEmpty) {
+            state = AsyncValue.data(productsWithoutCategory);
+            return;
+          }
+        }
+      }
+      
+      state = AsyncValue.data(products);
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
+    }
+  }
+
+  Future<List<ProductModel>> _applyFilters(ProductFilters filters) async {
+    try {
+      CollectionReference productsRef = FirebaseFirestore.instance.collection('products');
+      Query query = productsRef.where('isActive', isEqualTo: true)
+          .where('isApproved', isEqualTo: true);
+
+      // Apply category filter (case-insensitive)
+      if (filters.category != null) {
+        query = query.where('categoryLower', isEqualTo: filters.category?.toLowerCase());
+      }
+
+      // Apply subcategory filter (case-insensitive)
+      if (filters.subcategory != null) {
+        query = query.where('subcategoryLower', isEqualTo: filters.subcategory?.toLowerCase());
+      }
+
+      // Due to Firestore limitations, we can't combine multiple range filters
+      // So we'll fetch all products that meet the basic criteria and filter in memory
+      final querySnapshot = await query.get();
+      List<ProductModel> products = querySnapshot.docs
+          .map((doc) => ProductModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+          .toList();
+
+      // Apply price range filter in memory
+      if (filters.minPrice != null || filters.maxPrice != null) {
+        products = products.where((product) {
+          final price = product.price;
+          if (filters.minPrice != null && price < filters.minPrice!) {
+            return false;
+          }
+          if (filters.maxPrice != null && price > filters.maxPrice!) {
+            return false;
+          }
+          return true;
+        }).toList();
+      }
+
+      // Apply rating filter in memory
+      if (filters.minRating != null) {
+        products = products.where((product) => 
+          product.rating >= filters.minRating!
+        ).toList();
+      }
+
+      // Apply sorting in memory
       switch (filters.sortBy) {
         case SortOption.priceLowToHigh:
-          filteredProducts.sort((a, b) => a.price.compareTo(b.price));
+          products.sort((a, b) => a.price.compareTo(b.price));
           break;
         case SortOption.priceHighToLow:
-          filteredProducts.sort((a, b) => b.price.compareTo(a.price));
+          products.sort((a, b) => b.price.compareTo(a.price));
           break;
         case SortOption.popularity:
-          filteredProducts.sort((a, b) => b.rating.compareTo(a.rating));
+          products.sort((a, b) => b.rating.compareTo(a.rating));
           break;
         case SortOption.newest:
-        default:
-          filteredProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          products.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           break;
       }
 
-      // Then apply filters
-      if (filters.hasActiveFilters) {
-        // Category filter
-        if (filters.category != null && filters.category!.isNotEmpty) {
-          filteredProducts = filteredProducts.where((product) {
-            return product.category.toLowerCase() == filters.category!.toLowerCase();
-          }).toList();
-        }
+      return products;
+    } catch (e) {
+      print('Error applying filters: $e');
+      return [];
+    }
+  }
 
-        // Price range filter
-        if (filters.minPrice != null || filters.maxPrice != null) {
-          filteredProducts = filteredProducts.where((product) {
-            if (filters.minPrice != null && product.price < filters.minPrice!) {
-              return false;
-            }
-            if (filters.maxPrice != null && product.price > filters.maxPrice!) {
-              return false;
-            }
-            return true;
-          }).toList();
-        }
-
-        // Rating filter
-        if (filters.minRating != null && filters.minRating! > 0) {
-          filteredProducts = filteredProducts.where((product) {
-            return product.rating >= filters.minRating!;
-          }).toList();
-        }
-      }
-
-      return AsyncValue.data(filteredProducts);
-    },
-  );
-});
+  void updateFilters(ProductFilters filters) {
+    if (_filters == filters) return;
+    _filters = filters;
+    _loadProducts();
+  }
+}
 
 /// Provider for searching products with query and optional category filter
 final searchProductsProvider = FutureProvider.family<List<ProductModel>, ({String query, String? category})>((ref, params) async {

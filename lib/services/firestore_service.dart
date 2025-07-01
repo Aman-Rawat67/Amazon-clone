@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';  // Add this import for TimeoutException
 import '../models/product_model.dart';
 import '../models/cart_model.dart';
 import '../models/order_model.dart';
@@ -9,6 +11,11 @@ import '../models/category_model.dart';
 import '../models/deal_model.dart';
 import '../constants/app_constants.dart';
 import '../constants/filter_constants.dart';
+
+/// Provider for FirestoreService
+final firestoreServiceProvider = Provider<FirestoreService>((ref) {
+  return FirestoreService();
+});
 
 /// Service class for handling Firestore database operations
 class FirestoreService {
@@ -188,113 +195,141 @@ class FirestoreService {
     try {
       Query query = _firestore.collection(AppConstants.productsCollection);
 
-      // Count number of filters applied
-      int filterCount = 0;
+      // Add base filters for active products
+      query = query.where('isActive', isEqualTo: true);
       
-      // Add filters
+      // Add category filter (case-insensitive)
       if (category != null && category.isNotEmpty) {
-        query = query.where('category', isEqualTo: category);
-        filterCount++;
+        final normalizedCategory = category.trim().toLowerCase();
+        query = query.where('categoryLower', isEqualTo: normalizedCategory);
       }
 
+      // Add approval filter
       if (isApproved != null) {
         query = query.where('isApproved', isEqualTo: isApproved);
-        filterCount++;
       }
 
+      // Add vendor filter
       if (vendorId != null && vendorId.isNotEmpty) {
         query = query.where('vendorId', isEqualTo: vendorId);
-        filterCount++;
       }
 
-      // Add search functionality (basic text search)
+      // Add search functionality
       if (searchQuery != null && searchQuery.isNotEmpty) {
-        query = query
-            .where('name', isGreaterThanOrEqualTo: searchQuery)
-            .where('name', isLessThan: searchQuery + 'z');
-        filterCount++;
+        final normalizedSearch = searchQuery.trim().toLowerCase();
+        query = query.where('searchKeywords', arrayContains: normalizedSearch);
       }
 
-      // Only add orderBy if no filters are applied to avoid indexing issues
-      // For filtered queries, we'll sort on client side
-      bool shouldUseServerSideOrdering = filterCount == 0;
-      
-      if (shouldUseServerSideOrdering) {
-        switch (sortBy) {
-          case SortOption.priceLowToHigh:
-            query = query.orderBy('price', descending: false);
-            break;
-          case SortOption.priceHighToLow:
-            query = query.orderBy('price', descending: true);
-            break;
-          case SortOption.popularity:
-            query = query.orderBy('rating', descending: true);
-            break;
-          case SortOption.newest:
-          default:
-            query = query.orderBy('createdAt', descending: true);
-            break;
-        }
+      // Add sorting
+      switch (sortBy) {
+        case SortOption.priceLowToHigh:
+          query = query.orderBy('price', descending: false);
+          break;
+        case SortOption.priceHighToLow:
+          query = query.orderBy('price', descending: true);
+          break;
+        case SortOption.popularity:
+          query = query.orderBy('rating', descending: true);
+          break;
+        case SortOption.newest:
+        default:
+          query = query.orderBy('createdAt', descending: true);
+          break;
       }
 
-      // Add pagination (only works with server-side ordering)
-      if (lastDocument != null && shouldUseServerSideOrdering) {
+      // Add pagination
+      query = query.limit(limit);
+      if (lastDocument != null) {
         query = query.startAfterDocument(lastDocument);
       }
 
-      query = query.limit(limit);
+      // Execute query with timeout
+      final querySnapshot = await query.get().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Failed to load products. Please check your connection and try again.');
+        },
+      );
 
-      final querySnapshot = await query.get();
-
-      final products = querySnapshot.docs
-          .map((doc) => ProductModel.fromJson(doc.data() as Map<String, dynamic>))
-          .toList();
-
-      // Sort on client side if we couldn't use server-side ordering
-      if (!shouldUseServerSideOrdering) {
-        switch (sortBy) {
-          case SortOption.priceLowToHigh:
-            products.sort((a, b) => a.price.compareTo(b.price));
-            break;
-          case SortOption.priceHighToLow:
-            products.sort((a, b) => b.price.compareTo(a.price));
-            break;
-          case SortOption.popularity:
-            products.sort((a, b) => b.rating.compareTo(a.rating));
-            break;
-          case SortOption.newest:
-          default:
-            products.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-            break;
+      // Convert to product models with validation
+      final products = querySnapshot.docs.map((doc) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          // Add ID to data if not present
+          data['id'] = data['id'] ?? doc.id;
+          return ProductModel.fromMap(data, doc.id);
+        } catch (e) {
+          print('❌ Error parsing product ${doc.id}: $e');
+          return null;
         }
-      }
+      }).whereType<ProductModel>().toList();
+
+      // Log success/failure for debugging
+      print('✅ Loaded ${products.length} products with filters: category=$category, searchQuery=$searchQuery, isApproved=$isApproved, vendorId=$vendorId, sortBy=$sortBy');
 
       return products;
-    } catch (e) {
-      throw Exception('Failed to get products: ${e.toString()}');
+    } catch (e, stackTrace) {
+      print('❌ Error getting products: $e');
+      print('Stack trace: $stackTrace');
+      if (e is TimeoutException) {
+        throw TimeoutException('Failed to load products: Connection timed out');
+      }
+      throw Exception('Failed to load products: ${e.toString()}');
     }
   }
 
-  /// Get products by category
-  Future<List<ProductModel>> getProductsByCategory(String category) async {
+  /// Get products by category with subcategory support
+  Future<List<ProductModel>> getProductsByCategory(String category, {String? subcategory}) async {
     try {
-      final querySnapshot = await _firestore
-          .collection(AppConstants.productsCollection)
+      Query query = _firestore.collection(AppConstants.productsCollection)
           .where('isActive', isEqualTo: true)
-          .where('isApproved', isEqualTo: true)
-          .where('category', whereIn: [
-            category.toLowerCase(),
-            category,
-            category.toUpperCase()
-          ])
-          .orderBy('createdAt', descending: true)
-          .get();
+          .where('isApproved', isEqualTo: true);
 
-      return querySnapshot.docs
-          .map((doc) => ProductModel.fromJson(doc.data()))
-          .toList();
-    } catch (e) {
-      throw Exception('Failed to get products by category: ${e.toString()}');
+      // Add category filter (case-insensitive)
+      final normalizedCategory = category.trim().toLowerCase();
+      query = query.where('categoryLower', isEqualTo: normalizedCategory);
+
+      // Add subcategory filter if present (case-insensitive)
+      if (subcategory != null && subcategory.isNotEmpty) {
+        final normalizedSubcategory = subcategory.trim().toLowerCase();
+        query = query.where('subcategoryLower', isEqualTo: normalizedSubcategory);
+      }
+
+      // Add sorting by creation date
+      query = query.orderBy('createdAt', descending: true);
+
+      // Execute query with timeout
+      final querySnapshot = await query.get().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Failed to load products. Please check your connection and try again.');
+        },
+      );
+
+      // Convert to product models with validation
+      final products = querySnapshot.docs.map((doc) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          // Add ID to data if not present
+          data['id'] = data['id'] ?? doc.id;
+          return ProductModel.fromMap(data, doc.id);
+        } catch (e) {
+          print('❌ Error parsing product ${doc.id}: $e');
+          return null;
+        }
+      }).whereType<ProductModel>().toList();
+
+      // Log success/failure for debugging
+      print('✅ Loaded ${products.length} products for category: $category, subcategory: $subcategory');
+
+      return products;
+    } catch (e, stackTrace) {
+      print('❌ Error getting products by category: $e');
+      print('Stack trace: $stackTrace');
+      if (e is TimeoutException) {
+        throw TimeoutException('Failed to load products: Connection timed out');
+      }
+      throw Exception('Failed to load products: ${e.toString()}');
     }
   }
 
@@ -1123,154 +1158,110 @@ class FirestoreService {
 
   // PRODUCT SECTIONS OPERATIONS
 
-  /// Get all active product sections for homepage
+  /// Get product sections as a stream
   Stream<List<ProductSection>> getProductSectionsStream() {
     return _firestore
-        .collection(AppConstants.productSectionsCollection)
+        .collection('product_sections')
+        .orderBy('order')
         .snapshots()
         .asyncMap((snapshot) async {
       final sections = <ProductSection>[];
       
       for (final doc in snapshot.docs) {
-        final sectionData = doc.data();
-        
-        // Only include active sections
-        final isActive = sectionData['isActive'] as bool? ?? false;
-        if (!isActive) continue;
-        
-        // Fetch products for this section
-        final productIds = (sectionData['productIds'] as List<dynamic>?)
-            ?.map((id) => id as String)
-            .toList() ?? [];
-            
-        final products = <ProductModel>[];
-        
-        if (productIds.isNotEmpty) {
-          final productDocs = await _firestore
-              .collection(AppConstants.productsCollection)
-              .where(FieldPath.documentId, whereIn: productIds.take(10).toList())
-              .get();
-              
-          products.addAll(productDocs.docs
-              .map((doc) => ProductModel.fromJson(doc.data())));
+        try {
+          final sectionData = doc.data();
+          final productIds = List<String>.from(sectionData['productIds'] ?? []);
+          
+          // Fetch products for this section
+          final products = await _fetchProductsForSection(productIds);
+          
+          sections.add(ProductSection(
+            id: doc.id,
+            title: sectionData['title'] as String? ?? '',
+            subtitle: sectionData['subtitle'] as String?,
+            imageUrl: sectionData['imageUrl'] as String?,
+            seeMoreText: sectionData['seeMoreText'] as String?,
+            seeMoreRoute: sectionData['seeMoreRoute'] as String?,
+            products: products,
+            isActive: sectionData['isActive'] as bool? ?? true,
+            order: sectionData['order'] as int? ?? 0,
+            displayCount: sectionData['displayCount'] as int? ?? 4,
+            createdAt: (sectionData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          ));
+        } catch (e) {
+          print('Error processing section ${doc.id}: $e');
+          continue;
         }
-        
-        sections.add(ProductSection.fromJson({
-          ...sectionData,
-          'id': doc.id,
-          'products': products.map((p) => p.toJson()).toList(),
-        }));
       }
-      
-      // Sort sections by order
-      sections.sort((a, b) => a.order.compareTo(b.order));
       
       return sections;
     });
   }
 
-  /// Get product sections as future (alternative to stream)
+  /// Get product sections as a future
   Future<List<ProductSection>> getProductSections() async {
-    try {
-      final querySnapshot = await _firestore
-          .collection(AppConstants.productSectionsCollection)
-          .get();
+    final snapshot = await _firestore
+        .collection('product_sections')
+        .orderBy('order')
+        .get();
 
-      final sections = <ProductSection>[];
-      
-      for (final doc in querySnapshot.docs) {
+    final sections = <ProductSection>[];
+    
+    for (final doc in snapshot.docs) {
+      try {
         final sectionData = doc.data();
-        
-        // Filter for active sections only
-        final isActive = sectionData['isActive'] as bool? ?? false;
-        if (!isActive) continue;
-        
         final productIds = List<String>.from(sectionData['productIds'] ?? []);
         
         // Fetch products for this section
-        final products = await _getProductsByIds(productIds);
+        final products = await _fetchProductsForSection(productIds);
         
-        // Create section with products
-        final section = ProductSection(
+        sections.add(ProductSection(
           id: doc.id,
-          title: sectionData['title'] as String,
+          title: sectionData['title'] as String? ?? '',
           subtitle: sectionData['subtitle'] as String?,
-          products: products,
+          imageUrl: sectionData['imageUrl'] as String?,
           seeMoreText: sectionData['seeMoreText'] as String?,
           seeMoreRoute: sectionData['seeMoreRoute'] as String?,
-          displayCount: sectionData['displayCount'] as int? ?? 4,
-          imageUrl: sectionData['imageUrl'] as String?,
-          isActive: isActive,
+          products: products,
+          isActive: sectionData['isActive'] as bool? ?? true,
           order: sectionData['order'] as int? ?? 0,
+          displayCount: sectionData['displayCount'] as int? ?? 4,
           createdAt: (sectionData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-          updatedAt: sectionData['updatedAt'] != null
-              ? (sectionData['updatedAt'] as Timestamp).toDate()
-              : null,
-          metadata: sectionData['metadata'] as Map<String, dynamic>?,
-        );
-        
-        sections.add(section);
+        ));
+      } catch (e) {
+        print('Error processing section ${doc.id}: $e');
+        continue;
       }
-      
-      // Sort sections by order after filtering
-      sections.sort((a, b) => a.order.compareTo(b.order));
-      
-      return sections;
-    } catch (e) {
-      throw Exception('Failed to get product sections: ${e.toString()}');
-    }
-  }
-
-  /// Helper method to fetch products by their IDs
-  Future<List<ProductModel>> _getProductsByIds(List<String> productIds) async {
-    if (productIds.isEmpty) {
-      print('DEBUG: No product IDs provided');
-      return [];
     }
     
-    try {
-      print('DEBUG: Fetching products for IDs: $productIds');
-      
-      // Firestore 'in' query supports max 10 items, so batch if needed
-      final products = <ProductModel>[];
-      
-      for (int i = 0; i < productIds.length; i += 10) {
-        final batch = productIds.skip(i).take(10).toList();
-        print('DEBUG: Processing batch: $batch');
-        
-        final querySnapshot = await _firestore
-            .collection(AppConstants.productsCollection)
-            .where(FieldPath.documentId, whereIn: batch)
-            .get(); // Remove filters temporarily for debugging
-        
-        print('DEBUG: Found ${querySnapshot.docs.length} products in batch');
-        
-        for (final doc in querySnapshot.docs) {
-          final data = doc.data();
-          print('DEBUG: Product ${doc.id}: isActive=${data['isActive']}, isApproved=${data['isApproved']}');
-          
-          // Only include approved and active products in the final result
-          if (data['isApproved'] == true && data['isActive'] == true) {
-            final product = ProductModel.fromJson(data);
-            products.add(product);
-          }
+    return sections;
+  }
+
+  /// Helper method to fetch products for a section
+  Future<List<ProductModel>> _fetchProductsForSection(List<String> productIds) async {
+    if (productIds.isEmpty) return [];
+
+    final products = <ProductModel>[];
+    final chunks = productIds.take(10).toList();
+    
+    final snapshot = await _firestore
+        .collection('products')
+        .where(FieldPath.documentId, whereIn: chunks)
+        .get();
+
+    for (final doc in snapshot.docs) {
+      try {
+        final data = doc.data();
+        if (data['isApproved'] == true && data['isActive'] == true) {
+          products.add(ProductModel.fromMap(data, doc.id));
         }
+      } catch (e) {
+        print('Error processing product ${doc.id}: $e');
+        continue;
       }
-      
-      print('DEBUG: Returning ${products.length} approved & active products');
-      
-      // Sort products according to the original order in productIds
-      products.sort((a, b) {
-        final indexA = productIds.indexOf(a.id);
-        final indexB = productIds.indexOf(b.id);
-        return indexA.compareTo(indexB);
-      });
-      
-      return products;
-    } catch (e) {
-      print('ERROR in _getProductsByIds: ${e.toString()}');
-      throw Exception('Failed to fetch products by IDs: ${e.toString()}');
     }
+
+    return products;
   }
 
   /// Create a new product section (admin only)
@@ -1775,16 +1766,16 @@ class FirestoreService {
     }
   }
 
-  /// Get banners stream for homepage
-  Stream<List<BannerModel>> getBannersStream() {
+  /// Get active banners stream
+  Stream<List<BannerModel>> getBanners() {
     return _firestore
-        .collection(AppConstants.bannersCollection)
+        .collection('banners')
+        .where('isActive', isEqualTo: true)
+        .orderBy('order')
         .snapshots()
         .map((snapshot) => snapshot.docs
-            .map((doc) => BannerModel.fromJson({...doc.data(), 'id': doc.id}))
-            .where((banner) => banner.isActive && banner.isCurrentlyActive)
-            .toList()
-            ..sort((a, b) => a.order.compareTo(b.order)));
+            .map((doc) => BannerModel.fromMap(doc.data(), doc.id))
+            .toList());
   }
 
   /// Get categories stream for homepage

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/product_provider.dart';
 import '../../providers/product_section_provider.dart';
+import '../../services/firestore_service.dart';
 
 /// Widget for creating demo data with improved functionality
 class DemoDataButton extends ConsumerStatefulWidget {

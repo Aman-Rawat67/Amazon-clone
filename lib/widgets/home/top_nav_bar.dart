@@ -130,6 +130,38 @@ class TopNavBar extends ConsumerWidget {
   }
 
   Widget _buildAccountButton(BuildContext context, WidgetRef ref, UserModel? user) {
+    final List<Widget> menuItems = [
+      if (user == null) ...[
+        HoverDropdownItem(
+          text: 'Sign in',
+          onTap: () => context.push('/login'),
+          icon: Icons.login,
+        ),
+        const HoverDropdownItem(
+          text: 'New customer? Start here',
+          icon: Icons.person_add,
+        ),
+        const HoverDropdownDivider(),
+      ],
+      HoverDropdownItem(
+        text: 'Your Account',
+        onTap: () => context.push('/profile'),
+        icon: Icons.person_outline,
+      ),
+      HoverDropdownItem(
+        text: 'Your Orders',
+        onTap: () => context.push('/orders'),
+        icon: Icons.shopping_bag_outlined,
+      ),
+      if (user != null) ...[
+        HoverDropdownItem(
+          text: 'Sign Out',
+          onTap: () => ref.read(userProvider.notifier).signOut(),
+          icon: Icons.logout,
+        ),
+      ],
+    ];
+
     return HoverDropdownMenu(
       menuWidth: 250,
       offset: const Offset(0, 4),
@@ -159,37 +191,7 @@ class TopNavBar extends ConsumerWidget {
           ),
         ],
       ),
-      items: [
-        if (user == null) ...[
-          HoverDropdownItem(
-            text: 'Sign in',
-            onTap: () => context.push('/login'),
-            icon: Icons.login,
-          ),
-          const HoverDropdownItem(
-            text: 'New customer? Start here',
-            icon: Icons.person_add,
-          ),
-          const HoverDropdownDivider(),
-        ],
-        HoverDropdownItem(
-          text: 'Your Account',
-          onTap: () => context.push('/profile'),
-          icon: Icons.person_outline,
-        ),
-        HoverDropdownItem(
-          text: 'Your Orders',
-          onTap: () => context.push('/orders'),
-          icon: Icons.shopping_bag_outlined,
-        ),
-        if (user != null) ...[
-          HoverDropdownItem(
-            text: 'Sign Out',
-            onTap: () => ref.read(userProvider.notifier).signOut(),
-            icon: Icons.logout,
-          ),
-        ],
-      ],
+      items: menuItems,
     );
   }
 

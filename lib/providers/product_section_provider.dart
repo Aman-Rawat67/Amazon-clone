@@ -3,10 +3,29 @@ import '../models/product_section_model.dart';
 import '../services/firestore_service.dart';
 import 'product_provider.dart';
 
-/// Provider for product sections using Stream
+/// Stream provider for fetching product sections
 final productSectionsStreamProvider = StreamProvider<List<ProductSection>>((ref) {
   final firestoreService = ref.watch(firestoreServiceProvider);
   return firestoreService.getProductSectionsStream();
+});
+
+/// Provider for managing product sections
+final productSectionsProvider = Provider<List<ProductSection>>((ref) {
+  final sections = ref.watch(productSectionsStreamProvider);
+  return sections.when(
+    data: (data) => data,
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});
+
+/// Provider for getting a specific product section by ID
+final productSectionByIdProvider = Provider.family<ProductSection?, String>((ref, id) {
+  final sections = ref.watch(productSectionsProvider);
+  return sections.firstWhere(
+    (section) => section.id == id,
+    orElse: () => ProductSection.empty(),
+  );
 });
 
 /// Provider for product sections using Future (alternative to stream)
@@ -144,13 +163,4 @@ class ProductSectionNotifier extends StateNotifier<AsyncValue<List<ProductSectio
       rethrow;
     }
   }
-}
-
-/// Provider for a specific product section by ID
-final productSectionByIdProvider = FutureProvider.family<ProductSection?, String>((ref, sectionId) async {
-  final sections = await ref.watch(productSectionsFutureProvider.future);
-  return sections.firstWhere(
-    (section) => section.id == sectionId,
-    orElse: () => throw Exception('Section not found'),
-  );
-}); 
+} 

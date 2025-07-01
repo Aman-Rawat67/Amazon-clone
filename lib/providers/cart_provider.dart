@@ -5,9 +5,6 @@ import '../models/product_model.dart';
 import '../services/firestore_service.dart';
 import 'auth_provider.dart';
 
-/// Provider for FirestoreService instance
-final firestoreServiceProvider = Provider<FirestoreService>((ref) => FirestoreService());
-
 /// Provider for managing cart state and operations
 final cartProvider = AsyncNotifierProvider<CartNotifier, CartModel?>(() {
   return CartNotifier();

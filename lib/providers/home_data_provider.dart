@@ -6,9 +6,10 @@ import '../models/product_section_model.dart';
 import '../services/firestore_service.dart';
 import '../providers/auth_provider.dart';
 
-/// Provider for fetching active banners
+/// Provider for banner data
 final bannersProvider = StreamProvider<List<BannerModel>>((ref) {
-  return FirestoreService().getBannersStream();
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.getBanners();
 });
 
 /// Provider for fetching active categories
@@ -21,9 +22,10 @@ final dealsProvider = StreamProvider<List<DealModel>>((ref) {
   return FirestoreService().getDealsStream();
 });
 
-/// Provider for fetching product sections
-final productSectionsProvider = StreamProvider<List<ProductSection>>((ref) {
-  return FirestoreService().getProductSectionsStream();
+/// Provider for home sections data
+final homeSectionsProvider = StreamProvider<List<ProductSection>>((ref) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.getProductSectionsStream();
 });
 
 /// Provider for search suggestions

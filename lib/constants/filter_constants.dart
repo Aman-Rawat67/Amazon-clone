@@ -1,17 +1,47 @@
 /// Constants for filtering and sorting products
 class FilterConstants {
   static const List<String> categories = [
-    'Electronics',
-    'Fashion',
-    'Home & Kitchen',
-    'Books',
-    'Sports',
-    'Beauty',
-    'Toys',
-    'Automotive',
-    'Health',
-    'Grocery',
+    'clothing',
+    'electronics',
+    'handloom',
+    'automotive',
+    'home',
   ];
+
+  // Define subcategories mapping
+  static const Map<String, List<String>> subcategories = {
+    'clothing': [
+      'men',
+      'women',
+      'unisex',
+      'boy',
+      'girl',
+    ],
+    'electronics': [
+      'mobile phones',
+      'computers & laptops',
+      'audio devices',
+      'home appliances',
+    ],
+    'handloom': [
+      'bedsheets',
+      'curtains',
+      'mattress',
+      'pillow',
+    ],
+    'automotive': [
+      'car perfume',
+      'stereo',
+      'dash cam',
+      'cameras',
+    ],
+    'home': [
+      'kitchen',
+      'gardening',
+      'interior',
+      'furniture',
+    ],
+  };
 
   static const List<PriceRange> priceRanges = [
     PriceRange(min: 0, max: 500, label: 'Under ₹500'),

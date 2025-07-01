@@ -207,7 +207,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/category/:category',
         builder: (context, state) {
           final category = state.pathParameters['category'] ?? '';
-          final subcategory = state.uri.queryParameters['subcategory'];
+          return CategoryProductsScreen(
+            category: category,
+            subcategory: null,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/category/:category/subcategory/:subcategory',
+        builder: (context, state) {
+          final category = state.pathParameters['category'] ?? '';
+          final subcategory = state.pathParameters['subcategory'] ?? '';
           
           if (category.isEmpty) {
             return const DynamicHomeScreen();

@@ -9,6 +9,8 @@ class ProductModel {
   final double? originalPrice; // For showing discounts
   final String category;
   final String subcategory;
+  final String categoryLower;
+  final String subcategoryLower;
   final List<String> imageUrls;
   final String vendorId;
   final String vendorName;
@@ -33,6 +35,8 @@ class ProductModel {
     this.originalPrice,
     required this.category,
     required this.subcategory,
+    required this.categoryLower,
+    required this.subcategoryLower,
     this.imageUrls = const [],
     required this.vendorId,
     required this.vendorName,
@@ -62,6 +66,8 @@ class ProductModel {
           : null,
       category: json['category'] as String,
       subcategory: json['subcategory'] as String,
+      categoryLower: json['categoryLower'] as String? ?? json['category'].toString().toLowerCase(),
+      subcategoryLower: json['subcategoryLower'] as String? ?? json['subcategory'].toString().toLowerCase(),
       imageUrls: List<String>.from(json['imageUrls'] ?? []),
       vendorId: json['vendorId'] as String,
       vendorName: json['vendorName'] as String,
@@ -84,14 +90,19 @@ class ProductModel {
 
   /// Converts ProductModel to JSON format
   Map<String, dynamic> toJson() {
+    final nameNormalized = name.trim().toLowerCase();
+
     return {
       'id': id,
       'name': name,
+      'nameLower': nameNormalized,
       'description': description,
       'price': price,
       'originalPrice': originalPrice,
       'category': category,
+      'categoryLower': categoryLower,
       'subcategory': subcategory,
+      'subcategoryLower': subcategoryLower,
       'imageUrls': imageUrls,
       'vendorId': vendorId,
       'vendorName': vendorName,
@@ -109,6 +120,13 @@ class ProductModel {
       'shippingInfo': shippingInfo,
       'colors': colors,
       'sizes': sizes,
+      // Add search keywords for better search functionality
+      'searchKeywords': [
+        nameNormalized,
+        categoryLower,
+        subcategoryLower,
+        ...tags.map((tag) => tag.toLowerCase()),
+      ],
     };
   }
 
@@ -121,6 +139,8 @@ class ProductModel {
     double? originalPrice,
     String? category,
     String? subcategory,
+    String? categoryLower,
+    String? subcategoryLower,
     List<String>? imageUrls,
     String? vendorId,
     String? vendorName,
@@ -145,6 +165,8 @@ class ProductModel {
       originalPrice: originalPrice ?? this.originalPrice,
       category: category ?? this.category,
       subcategory: subcategory ?? this.subcategory,
+      categoryLower: categoryLower ?? this.categoryLower,
+      subcategoryLower: subcategoryLower ?? this.subcategoryLower,
       imageUrls: imageUrls ?? this.imageUrls,
       vendorId: vendorId ?? this.vendorId,
       vendorName: vendorName ?? this.vendorName,
@@ -219,6 +241,8 @@ class ProductModel {
           : null,
       category: map['category'] as String,
       subcategory: map['subcategory'] as String,
+      categoryLower: map['categoryLower'] as String? ?? map['category'].toString().toLowerCase(),
+      subcategoryLower: map['subcategoryLower'] as String? ?? map['subcategory'].toString().toLowerCase(),
       imageUrls: List<String>.from(map['imageUrls'] ?? []),
       vendorId: map['vendorId'] as String,
       vendorName: map['vendorName'] as String,
@@ -247,7 +271,9 @@ class ProductModel {
       'price': price,
       'originalPrice': originalPrice,
       'category': category,
+      'categoryLower': categoryLower,
       'subcategory': subcategory,
+      'subcategoryLower': subcategoryLower,
       'imageUrls': imageUrls,
       'vendorId': vendorId,
       'vendorName': vendorName,

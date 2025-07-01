@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 /// Enhanced hover dropdown menu widget with proper behavior and styling
 class HoverDropdownMenu extends StatefulWidget {
   final Widget trigger;
   final double menuWidth;
-  final List<Widget>? items;
+  final List<Widget> items;
   final Offset offset;
 
   const HoverDropdownMenu({
     super.key,
     required this.trigger,
+    required this.items,
     this.menuWidth = 200,
-    this.items,
     this.offset = const Offset(0, 0),
   });
 
@@ -24,15 +25,18 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
   bool _isMenuHovered = false;
   final _menuKey = GlobalKey();
   OverlayEntry? _overlayEntry;
+  bool _isNavigating = false;
+  Timer? _closeTimer;
 
   @override
   void dispose() {
     _removeOverlay();
+    _closeTimer?.cancel();
     super.dispose();
   }
 
   void _showOverlay(BuildContext context) {
-    _removeOverlay();
+    if (!mounted || _overlayEntry != null) return;
 
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
     final size = renderBox.size;
@@ -43,46 +47,41 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
     
     // Calculate available space below and to the right
     final spaceBelow = screenSize.height - (offset.dy + size.height + widget.offset.dy);
-    final spaceRight = screenSize.width - (offset.dx + widget.offset.dx + widget.menuWidth);
+    final spaceRight = screenSize.width - (offset.dx + widget.menuWidth);
     
-    // Adjust horizontal position if menu would go off-screen
-    final leftOffset = spaceRight < 0
-        ? offset.dx + widget.offset.dx - (widget.menuWidth + spaceRight)
-        : offset.dx + widget.offset.dx;
-    
-    // Decide whether to show menu above or below
-    final showAbove = spaceBelow < 400 && offset.dy > spaceBelow;
-    
-    // Calculate final vertical position
-    final topOffset = showAbove 
-        ? offset.dy - 400 // Show above
-        : offset.dy + size.height + widget.offset.dy; // Show below
+    // Adjust position based on available space
+    final double verticalOffset = spaceBelow < 200 ? -200 : widget.offset.dy;
+    final double horizontalOffset = spaceRight < 0 ? -widget.menuWidth + size.width : 0;
 
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
-        left: leftOffset,
-        top: topOffset,
+        top: offset.dy + size.height + verticalOffset,
+        left: offset.dx + horizontalOffset + widget.offset.dx,
         child: MouseRegion(
-          onEnter: (_) => setState(() => _isMenuHovered = true),
-          onExit: (_) => _handleMenuExit(),
+          onEnter: (_) {
+            _closeTimer?.cancel();
+            if (mounted) setState(() => _isMenuHovered = true);
+          },
+          onExit: (_) {
+            _startCloseTimer();
+            if (mounted) setState(() => _isMenuHovered = false);
+          },
           child: Material(
             elevation: 8,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(8),
             child: Container(
+              key: _menuKey,
               width: widget.menuWidth,
-              constraints: BoxConstraints(
-                maxHeight: 400, // Maximum height for the menu
-              ),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey.shade300),
               ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: widget.items ?? [],
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: widget.items.isNotEmpty 
+                  ? widget.items 
+                  : [const HoverDropdownItem(text: 'No items')],
               ),
             ),
           ),
@@ -90,7 +89,9 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
       ),
     );
 
-    Overlay.of(context).insert(_overlayEntry!);
+    if (mounted) {
+      Overlay.of(context).insert(_overlayEntry!);
+    }
   }
 
   void _removeOverlay() {
@@ -98,9 +99,9 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
     _overlayEntry = null;
   }
 
-  void _handleMenuExit() {
-    setState(() => _isMenuHovered = false);
-    Future.delayed(const Duration(milliseconds: 100), () {
+  void _startCloseTimer() {
+    _closeTimer?.cancel();
+    _closeTimer = Timer(const Duration(milliseconds: 150), () {
       if (!mounted) return;
       if (!_isHovered && !_isMenuHovered) {
         _removeOverlay();
@@ -108,12 +109,17 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
     });
   }
 
-  void _handleTriggerExit() {
-    setState(() => _isHovered = false);
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (!mounted) return;
-      if (!_isHovered && !_isMenuHovered) {
-        _removeOverlay();
+  void _handleHover(bool isHovered) {
+    if (!mounted || _isNavigating) return;
+    
+    _closeTimer?.cancel();
+    
+    setState(() {
+      _isHovered = isHovered;
+      if (isHovered) {
+        _showOverlay(context);
+      } else {
+        _startCloseTimer();
       }
     });
   }
@@ -121,12 +127,8 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      key: _menuKey,
-      onEnter: (_) => setState(() {
-        _isHovered = true;
-        _showOverlay(context);
-      }),
-      onExit: (_) => _handleTriggerExit(),
+      onEnter: (_) => _handleHover(true),
+      onExit: (_) => _handleHover(false),
       child: widget.trigger,
     );
   }
@@ -152,38 +154,44 @@ class HoverDropdownItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: isHeader ? null : onTap,
+      onTap: isHeader ? null : () {
+        if (onTap != null) {
+          // Find the parent HoverDropdownMenu and close its overlay
+          final ancestor = context.findAncestorStateOfType<_HoverDropdownMenuState>();
+          if (ancestor != null) {
+            ancestor._isNavigating = true;
+            ancestor._removeOverlay();
+          }
+          
+          // Execute the onTap callback after a short delay
+          Future.microtask(() {
+            onTap!();
+            if (ancestor != null && ancestor.mounted) {
+              ancestor._isNavigating = false;
+            }
+          });
+        }
+      },
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        color: isSelected ? Colors.grey.shade100 : Colors.transparent,
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.grey.shade100 : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+        ),
         child: Row(
           children: [
             if (icon != null) ...[
-              Icon(
-                icon,
-                size: 16,
-                color: isHeader 
-                    ? Colors.black87
-                    : isSelected 
-                        ? Colors.amber
-                        : Colors.grey.shade700,
-              ),
+              Icon(icon, size: 16, color: Colors.grey.shade700),
               const SizedBox(width: 8),
             ],
             Expanded(
               child: Text(
                 text,
                 style: TextStyle(
-                  fontSize: 14,
-                  color: isHeader 
-                      ? Colors.black87
-                      : isSelected 
-                          ? Colors.amber
-                          : Colors.grey.shade800,
-                  fontWeight: isHeader || isSelected
-                      ? FontWeight.w600
-                      : FontWeight.normal,
+                  fontSize: isHeader ? 14 : 13,
+                  fontWeight: isHeader ? FontWeight.w600 : FontWeight.w400,
+                  color: isHeader ? Colors.grey.shade800 : Colors.grey.shade700,
                 ),
               ),
             ),

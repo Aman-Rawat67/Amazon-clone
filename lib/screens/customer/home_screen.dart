@@ -46,7 +46,9 @@ class HomeScreen extends ConsumerWidget {
                                   ref.read(productFiltersProvider.notifier).updatePriceRange(min, max);
                                 },
                                 onRatingChanged: (double? rating) {
-                                  ref.read(productFiltersProvider.notifier).updateRating(rating);
+                                  ref.read(productFiltersProvider.notifier).updateRating(
+                                    rating == 0 ? null : rating,
+                                  );
                                 },
                                 selectedSort: filters.sortBy,
                                 selectedPriceRange: RangeValues(
@@ -91,7 +93,9 @@ class HomeScreen extends ConsumerWidget {
                                   ref.read(productFiltersProvider.notifier).updatePriceRange(min, max);
                                 },
                                 onRatingChanged: (double? rating) {
-                                  ref.read(productFiltersProvider.notifier).updateRating(rating);
+                                  ref.read(productFiltersProvider.notifier).updateRating(
+                                    rating == 0 ? null : rating,
+                                  );
                                 },
                                 selectedSort: filters.sortBy,
                                 selectedPriceRange: RangeValues(
