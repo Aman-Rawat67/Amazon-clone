@@ -30,7 +30,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   
   bool _isPlacingOrder = false;
   bool _isSelectingAddress = false;
-  String _selectedAddressId = 'address_1';
+  String _selectedAddressId = '';
   
   // Razorpay integration
   Razorpay? _razorpay;
@@ -46,6 +46,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   void initState() {
     super.initState();
     _initializeRazorpay();
+    _initializeSelectedAddress();
   }
 
   /// Initialize Razorpay instance
@@ -64,6 +65,34 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     } catch (e) {
       print('🔥 Error initializing Razorpay: $e');
     }
+  }
+
+  /// Initialize selected address ID based on user's default address
+  void _initializeSelectedAddress() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = ref.read(userProvider).value;
+      if (user?.addresses.isNotEmpty == true) {
+        try {
+          // Find default address or use first address
+          final defaultAddressString = user!.addresses.firstWhere(
+            (addr) {
+              final parts = addr.split('|');
+              return parts.length > 8 && parts[8].toLowerCase() == 'true';
+            },
+            orElse: () => user.addresses.first,
+          );
+          
+          final defaultAddress = ShippingAddress.fromString(defaultAddressString);
+          if (mounted) {
+            setState(() {
+              _selectedAddressId = defaultAddress.id;
+            });
+          }
+        } catch (e) {
+          print('Error initializing selected address: $e');
+        }
+      }
+    });
   }
 
   /// Handle Razorpay payment success
@@ -87,13 +116,44 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         throw Exception('Cart is empty');
       }
 
-      // Create shipping address (using default for now)
-      final shippingAddress = _orderService.createDefaultAddress();
+      // Get the selected shipping address
+      final userData = ref.read(userProvider).value;
+      if (userData == null || userData.addresses.isEmpty) {
+        throw Exception('No shipping address available');
+      }
 
-      // Create order with Razorpay payment details
+      ShippingAddress? selectedAddress;
+      if (_selectedAddressId.isNotEmpty) {
+        try {
+          final addressString = userData.addresses.firstWhere(
+            (addr) => addr.startsWith('$_selectedAddressId|'),
+          );
+          selectedAddress = ShippingAddress.fromString(addressString);
+        } catch (e) {
+          print('Error finding selected address: $e');
+        }
+      }
+
+      // Fallback to default address or first address if no selection
+      if (selectedAddress == null) {
+        try {
+          final defaultAddressString = userData.addresses.firstWhere(
+            (addr) {
+              final parts = addr.split('|');
+              return parts.length > 8 && parts[8].toLowerCase() == 'true';
+            },
+            orElse: () => userData.addresses.first,
+          );
+          selectedAddress = ShippingAddress.fromString(defaultAddressString);
+        } catch (e) {
+          throw Exception('Unable to find a valid shipping address');
+        }
+      }
+
+      // Create order with selected address
       final order = await _createOrderWithRazorpayPayment(
         cart.items,
-        shippingAddress,
+        selectedAddress,
         response.paymentId!,
         cart.totalPrice,
       );
@@ -501,116 +561,166 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   }
 
   Widget _buildCheckoutContent(CartModel cart) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Delivery address section
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Delivery Address',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F1111),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Address details
-                const Text(
-                  'Aman Singh',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF0F1111),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Sewla Kalan Chandrabani Road, Parvati vihar',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF565959),
-                  ),
-                ),
-                const Text(
-                  'DEHRADUN, UTTARAKHAND, 248001',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF565959),
-                  ),
-                ),
-                const Text(
-                  'India',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF565959),
-                  ),
-                ),
-                const Text(
-                  'Phone: 7618447467',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF565959),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Edit button
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _isSelectingAddress = true;
-                    });
-                  },
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    foregroundColor: const Color(0xFF007185),
-                  ),
-                  child: const Text('Edit address'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
+    final userAsync = ref.watch(userProvider);
+    
+    return userAsync.when(
+      data: (user) {
+        ShippingAddress? defaultAddress;
+        if (user?.addresses.isNotEmpty == true) {
+          try {
+            defaultAddress = ShippingAddress.fromString(
+              user!.addresses.firstWhere(
+                (addr) {
+                  final parts = addr.split('|');
+                  return parts.length > 8 && parts[8].toLowerCase() == 'true';
+                },
+                orElse: () => user.addresses.first,
+              ),
+            );
+          } catch (e) {
+            print('Error parsing address: $e');
+          }
+        }
 
-          // Payment method section
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Payment Method',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F1111),
-                  ),
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Delivery address section
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(height: 16),
-                _buildRazorpayPaymentMethod(),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Delivery Address',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF0F1111),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    if (defaultAddress != null) ...[
+                      // Address details
+                      Text(
+                        defaultAddress.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF0F1111),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        defaultAddress.address,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF565959),
+                        ),
+                      ),
+                      Text(
+                        '${defaultAddress.city}, ${defaultAddress.state}, ${defaultAddress.zipCode}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF565959),
+                        ),
+                      ),
+                      Text(
+                        defaultAddress.country,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF565959),
+                        ),
+                      ),
+                      Text(
+                        'Phone: ${defaultAddress.phone}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF565959),
+                        ),
+                      ),
+                      if (defaultAddress.deliveryInstructions?.isNotEmpty == true) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Instructions: ${defaultAddress.deliveryInstructions}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF565959),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ] else ...[
+                      const Text(
+                        'No address selected',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF565959),
+                        ),
+                      ),
+                    ],
+                    
+                    const SizedBox(height: 16),
+                    // Edit button
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _isSelectingAddress = true;
+                        });
+                      },
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: const Color(0xFF007185),
+                      ),
+                      child: Text(defaultAddress != null ? 'Change address' : 'Select address'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
 
-          // Order summary section
-          _buildOrderSummary(cart),
-        ],
+              // Payment method section
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Payment Method',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF0F1111),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildRazorpayPaymentMethod(),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Order summary section
+              _buildOrderSummary(cart),
+            ],
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Text('Error loading user data: $error'),
       ),
     );
   }
@@ -785,106 +895,240 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   }
 
   Widget _buildAddressSelectionScreen(CartModel cart) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          const Text(
-            'Select a delivery address',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF0F1111),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Address list
-          Container(
+    final userAsync = ref.watch(userProvider);
+    
+    return userAsync.when(
+      data: (user) {
+        if (user == null || user.addresses.isEmpty) {
+          return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(8),
-            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Default address
-                RadioListTile<String>(
-                  value: 'address_1',
-                  groupValue: _selectedAddressId,
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedAddressId = value!;
-                    });
-                  },
-                  title: const Text(
-                    'Aman Singh',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF0F1111),
-                    ),
-                  ),
-                  subtitle: const Text(
-                    'Sewla Kalan Chandrabani Road, Parvati vihar\nDEHRADUN, UTTARAKHAND, 248001\nIndia\nPhone: 7618447467',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF565959),
-                    ),
+                const Text(
+                  'Select a delivery address',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F1111),
                   ),
                 ),
-                const Divider(),
-                // Add new address button
-                TextButton.icon(
-                  onPressed: _showEditAddressDialog,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add a new address'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF007185),
-                    padding: EdgeInsets.zero,
-                    alignment: Alignment.centerLeft,
+                const SizedBox(height: 24),
+                
+                // No addresses found
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.location_off,
+                          size: 64,
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No addresses found',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Add your first address to continue',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: () => _showEditAddressDialog(),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Address'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFFD814),
+                            foregroundColor: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 24),
+          );
+        }
 
-          // Order summary
-          _buildAddressSelectionOrderSummary(cart),
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              const Text(
+                'Select a delivery address',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0F1111),
+                ),
+              ),
+              const SizedBox(height: 24),
 
-          const SizedBox(height: 24),
-
-          // Use this address button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _isSelectingAddress = false;
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFD814),
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
+              // Address list
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
                   borderRadius: BorderRadius.circular(8),
                 ),
-              ),
-              child: const Text(
-                'Use this address',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // User addresses
+                    ...user.addresses.asMap().entries.map((entry) {
+                      try {
+                        final address = ShippingAddress.fromString(entry.value);
+                        return Column(
+                          children: [
+                            RadioListTile<String>(
+                              value: address.id,
+                              groupValue: _selectedAddressId,
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedAddressId = value!;
+                                });
+                              },
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      address.name,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                        color: Color(0xFF0F1111),
+                                      ),
+                                    ),
+                                  ),
+                                  if (address.isDefault)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade100,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        'Default',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.green.shade800,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    address.formattedAddress,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF565959),
+                                    ),
+                                  ),
+                                  Text(
+                                    'Phone: ${address.phone}',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF565959),
+                                    ),
+                                  ),
+                                  if (address.deliveryInstructions?.isNotEmpty == true)
+                                    Text(
+                                      'Instructions: ${address.deliveryInstructions}',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Color(0xFF565959),
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            if (entry.key < user.addresses.length - 1) const Divider(),
+                          ],
+                        );
+                      } catch (e) {
+                        // Skip invalid address strings
+                        return const SizedBox.shrink();
+                      }
+                    }).toList(),
+                    
+                    const Divider(),
+                    // Add new address button
+                    TextButton.icon(
+                      onPressed: _showEditAddressDialog,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add a new address'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF007185),
+                        padding: EdgeInsets.zero,
+                        alignment: Alignment.centerLeft,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
+              const SizedBox(height: 24),
+
+              // Order summary
+              _buildAddressSelectionOrderSummary(cart),
+
+              const SizedBox(height: 24),
+
+              // Use this address button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _selectedAddressId.isNotEmpty ? () {
+                    setState(() {
+                      _isSelectingAddress = false;
+                    });
+                  } : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD814),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    'Use this address',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Text('Error loading addresses: $error'),
       ),
     );
   }
@@ -998,170 +1242,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
   /// Show edit address dialog
   void _showEditAddressDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          backgroundColor: Colors.white,
-          child: Container(
-            width: 600,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Edit Address',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF0F1111),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                
-                // Form
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextFormField(
-                        controller: _addressController,
-                        decoration: const InputDecoration(
-                          labelText: 'Full Address',
-                          hintText: 'Enter your full address',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your address';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _cityController,
-                              decoration: const InputDecoration(
-                                labelText: 'City',
-                                hintText: 'Enter your city',
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter your city';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _stateController,
-                              decoration: const InputDecoration(
-                                labelText: 'State',
-                                hintText: 'Enter your state',
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter your state';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _zipController,
-                              decoration: const InputDecoration(
-                                labelText: 'ZIP Code',
-                                hintText: 'Enter your ZIP code',
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter your ZIP code';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _phoneController,
-                              decoration: const InputDecoration(
-                                labelText: 'Phone Number',
-                                hintText: 'Enter your phone number',
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter your phone number';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                
-                // Save button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        // Save address logic here
-                        Navigator.of(context).pop();
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD814),
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text(
-                      'Save Address',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    // Navigate to addresses screen
+    context.push('/addresses').then((_) {
+      // Refresh address selection when returning
+      _initializeSelectedAddress();
+    });
   }
 }

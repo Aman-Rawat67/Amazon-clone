@@ -497,8 +497,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           
           _buildDemoAccountButton(
             'Customer Demo',
-            'customer@demo.com',
-            'password123',
+            'customer@gmail.com',
+            '12345678',
             Icons.shopping_cart,
             Colors.blue,
           ),

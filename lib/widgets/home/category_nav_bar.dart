@@ -183,8 +183,9 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
       offset: const Offset(0, 4),
       trigger: InkWell(
         onTap: () {
-          // Navigate to main category page
-          context.push('/category/${Uri.encodeComponent(category)}');
+          // Navigate to main category page with properly encoded URL
+          final encodedCategory = Uri.encodeComponent(category.toLowerCase());
+          context.push('/category/$encodedCategory');
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -205,14 +206,18 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
         ),
       ),
       items: [
-        for (var subcategory in subcategories)
+        for (int i = 0; i < subcategories.length; i++) ...[
           HoverDropdownItem(
-            text: subcategory,
+            text: subcategories[i],
             onTap: () {
-              context.push('/category/${Uri.encodeComponent(category)}/${Uri.encodeComponent(subcategory)}');
+              // Navigate to subcategory with properly encoded parameters
+              final encodedCategory = Uri.encodeComponent(category.toLowerCase());
+              final encodedSubcategory = Uri.encodeComponent(subcategories[i]);
+              context.push('/category/$encodedCategory?subcategory=$encodedSubcategory');
             },
-            showDivider: subcategory != subcategories.last,
           ),
+          if (i < subcategories.length - 1) const HoverDropdownDivider(),
+        ],
       ],
     );
   }

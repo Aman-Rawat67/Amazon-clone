@@ -259,52 +259,75 @@ class ProductFiltersNotifier extends StateNotifier<ProductFilters> {
 
   /// Update sort option
   void updateSortBy(SortOption sortBy) {
-    state = state.copyWith(sortBy: sortBy);
-    _refreshProducts();
+    if (state.sortBy != sortBy) {
+      state = state.copyWith(sortBy: sortBy);
+      // Don't reset other filters when changing sort
+      _refreshProducts(forceRefresh: false);
+    }
   }
 
   /// Update price range
   void updatePriceRange(double? minPrice, double? maxPrice) {
-    state = state.copyWith(
-      minPrice: minPrice,
-      maxPrice: maxPrice,
-    );
-    _refreshProducts();
+    if (state.minPrice != minPrice || state.maxPrice != maxPrice) {
+      state = state.copyWith(
+        minPrice: minPrice,
+        maxPrice: maxPrice,
+        // Reset other filters when price range is selected
+        minRating: null,
+      );
+      _refreshProducts();
+    }
   }
 
   /// Update minimum rating
   void updateRating(double? rating) {
-    state = state.copyWith(minRating: rating);
-    _refreshProducts();
+    if (state.minRating != rating) {
+      state = state.copyWith(
+        minRating: rating,
+        // Reset price filters when rating is selected
+        minPrice: null,
+        maxPrice: null,
+      );
+      _refreshProducts();
+    }
   }
 
   /// Update category
   void updateCategory(String? category) {
-    state = state.copyWith(
-      category: category,
-      subcategory: null, // Reset subcategory when category changes
-    );
-    _refreshProducts();
-  }
-
-  /// Update subcategory
-  void updateSubcategory(String? subcategory) {
-    state = state.copyWith(subcategory: subcategory);
-    _refreshProducts();
+    if (state.category != category) {
+      state = state.copyWith(
+        category: category,
+        // Reset all other filters when category changes
+        minPrice: null,
+        maxPrice: null,
+        minRating: null,
+        sortBy: SortOption.newest,
+      );
+      _refreshProducts();
+    }
   }
 
   /// Reset all filters
   void resetFilters() {
-    state = ProductFilters();
-    _refreshProducts();
+    if (state.hasActiveFilters) {
+      state = ProductFilters();
+      _refreshProducts();
+    }
   }
 
   /// Refresh products with current filters
-  void _refreshProducts() {
-    _ref.read(productProvider.notifier).loadProducts(
-      category: state.category,
-      sortBy: state.sortBy,
-    );
+  void _refreshProducts({bool forceRefresh = true}) {
+    // Force refresh of filtered products
+    _ref.invalidate(filteredProductsProvider);
+    
+    // Only reload products if we're forcing a refresh or have category/search filters
+    if (forceRefresh || state.category != null) {
+      _ref.read(productProvider.notifier).loadProducts(
+        category: state.category,
+        sortBy: state.sortBy,
+        refresh: true,
+      );
+    }
   }
 }
 
@@ -317,32 +340,10 @@ final filteredProductsProvider = Provider<AsyncValue<List<ProductModel>>>((ref) 
     loading: () => const AsyncValue.loading(),
     error: (error, stack) => AsyncValue.error(error, stack),
     data: (products) {
-      // Apply filters
-      var filteredProducts = products.where((product) {
-        // Category filter
-        if (filters.category != null && filters.category!.isNotEmpty) {
-          if (product.category.toLowerCase() != filters.category!.toLowerCase()) {
-            return false;
-          }
-        }
+      // Create a mutable copy of the products list
+      var filteredProducts = List<ProductModel>.from(products);
 
-        // Price range filter
-        if (filters.minPrice != null && product.price < filters.minPrice!) {
-          return false;
-        }
-        if (filters.maxPrice != null && product.price > filters.maxPrice!) {
-          return false;
-        }
-
-        // Rating filter
-        if (filters.minRating != null && filters.minRating! > 0 && product.rating < filters.minRating!) {
-          return false;
-        }
-
-        return true;
-      }).toList();
-
-      // Apply sorting
+      // Apply sorting first
       switch (filters.sortBy) {
         case SortOption.priceLowToHigh:
           filteredProducts.sort((a, b) => a.price.compareTo(b.price));
@@ -357,6 +358,36 @@ final filteredProductsProvider = Provider<AsyncValue<List<ProductModel>>>((ref) 
         default:
           filteredProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           break;
+      }
+
+      // Then apply filters
+      if (filters.hasActiveFilters) {
+        // Category filter
+        if (filters.category != null && filters.category!.isNotEmpty) {
+          filteredProducts = filteredProducts.where((product) {
+            return product.category.toLowerCase() == filters.category!.toLowerCase();
+          }).toList();
+        }
+
+        // Price range filter
+        if (filters.minPrice != null || filters.maxPrice != null) {
+          filteredProducts = filteredProducts.where((product) {
+            if (filters.minPrice != null && product.price < filters.minPrice!) {
+              return false;
+            }
+            if (filters.maxPrice != null && product.price > filters.maxPrice!) {
+              return false;
+            }
+            return true;
+          }).toList();
+        }
+
+        // Rating filter
+        if (filters.minRating != null && filters.minRating! > 0) {
+          filteredProducts = filteredProducts.where((product) {
+            return product.rating >= filters.minRating!;
+          }).toList();
+        }
       }
 
       return AsyncValue.data(filteredProducts);

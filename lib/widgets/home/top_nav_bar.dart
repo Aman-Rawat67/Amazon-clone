@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/home_data_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/product_provider.dart';
 import '../../models/order_model.dart';
 import '../../models/user_model.dart';
 import '../../constants/app_constants.dart';
+import '../../constants/filter_constants.dart';
 import 'hover_dropdown_menu.dart';
 import 'search_bar_widget.dart';
 
@@ -27,7 +29,10 @@ class TopNavBar extends ConsumerWidget {
       try {
         defaultAddress = ShippingAddress.fromString(
           user!.addresses.firstWhere(
-            (addr) => addr.split('|')[8].toLowerCase() == 'true',
+            (addr) {
+              final parts = addr.split('|');
+              return parts.length > 8 && parts[8].toLowerCase() == 'true';
+            },
             orElse: () => user.addresses.first,
           ),
         );
@@ -50,7 +55,7 @@ class TopNavBar extends ConsumerWidget {
             InkWell(
               onTap: () => context.go('/'),
               child: Image.asset(
-                'images/amazon_logo.png',
+                'assets/images/amazon_logo.png',
                 height: 32,
                 errorBuilder: (context, error, stackTrace) {
                   return const Text(
@@ -69,50 +74,7 @@ class TopNavBar extends ConsumerWidget {
 
             // Deliver to button
             if (!isMobile) ...[
-              InkWell(
-                onTap: () {
-                  if (user == null) {
-                    context.push('/login');
-                  } else {
-                    context.push('/addresses');
-                  }
-                },
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 4),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user == null ? 'Hello' : 'Deliver to ${user.name}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.white70,
-                          ),
-                        ),
-                        Text(
-                          user == null 
-                            ? 'Select your address' 
-                            : defaultAddress != null 
-                              ? '${defaultAddress.city} ${defaultAddress.zipCode}'
-                              : 'Add an address',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              _buildDeliverToButton(context, user, defaultAddress),
               const SizedBox(width: 16),
             ],
 
@@ -157,6 +119,10 @@ class TopNavBar extends ConsumerWidget {
             // Cart
             const SizedBox(width: 16),
             _buildCartButton(context, cartCount),
+            
+            // Filter button
+            const SizedBox(width: 16),
+            _buildFilterButton(context, ref),
           ],
         ),
       ),
@@ -203,8 +169,8 @@ class TopNavBar extends ConsumerWidget {
           const HoverDropdownItem(
             text: 'New customer? Start here',
             icon: Icons.person_add,
-            showDivider: true,
           ),
+          const HoverDropdownDivider(),
         ],
         HoverDropdownItem(
           text: 'Your Account',
@@ -273,6 +239,296 @@ class TopNavBar extends ConsumerWidget {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDeliverToButton(BuildContext context, UserModel? user, ShippingAddress? defaultAddress) {
+    if (user == null) {
+      return InkWell(
+        onTap: () => context.push('/login'),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.location_on_outlined,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 4),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Hello',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                  ),
+                ),
+                const Text(
+                  'Select your address',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return HoverDropdownMenu(
+      menuWidth: 300,
+      offset: const Offset(0, 4),
+      trigger: Row(
+        children: [
+          const Icon(
+            Icons.location_on_outlined,
+            color: Colors.white,
+            size: 20,
+          ),
+          const SizedBox(width: 4),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Deliver to ${user.name}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.white70,
+                ),
+              ),
+              Row(
+                children: [
+                  Text(
+                    defaultAddress != null 
+                      ? '${defaultAddress.city} ${defaultAddress.zipCode}'
+                      : 'Add an address',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+      items: [
+        // Add new address option
+        HoverDropdownItem(
+          text: 'Add a new address',
+          onTap: () => context.push('/addresses'),
+          icon: Icons.add_location,
+        ),
+        
+        if (user.addresses.isNotEmpty) const HoverDropdownDivider(),
+        
+        // Show existing addresses (limit to first 3 for dropdown)
+        ...user.addresses.take(3).map((addressString) {
+          try {
+            final address = ShippingAddress.fromString(addressString);
+            return HoverDropdownItem(
+              text: '${address.name} - ${address.city}, ${address.state} ${address.zipCode}${address.isDefault ? ' (Default)' : ''}',
+              onTap: () => context.push('/addresses'),
+              icon: address.isDefault ? Icons.radio_button_checked : Icons.location_on,
+              isSelected: address.isDefault,
+            );
+          } catch (e) {
+            // Skip invalid address strings
+            return HoverDropdownItem(
+              text: 'Invalid address',
+              onTap: () {},
+              icon: Icons.error,
+            );
+          }
+        }).toList(),
+        
+        // Show more addresses option if there are more than 3
+        if (user.addresses.length > 3) ...[
+          const HoverDropdownDivider(),
+          HoverDropdownItem(
+            text: 'See all addresses (${user.addresses.length})',
+            onTap: () => context.push('/addresses'),
+            icon: Icons.list,
+          ),
+        ],
+        
+        // Manage addresses option
+        if (user.addresses.isNotEmpty) ...[
+          const HoverDropdownDivider(),
+          HoverDropdownItem(
+            text: 'Manage addresses',
+            onTap: () => context.push('/addresses'),
+            icon: Icons.settings,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildFilterButton(BuildContext context, WidgetRef ref) {
+    final filters = ref.watch(productFiltersProvider);
+    final hasActiveFilters = filters.hasActiveFilters;
+
+    return HoverDropdownMenu(
+      menuWidth: 220,
+      offset: const Offset(0, 4),
+      trigger: Row(
+        children: [
+          Icon(
+            Icons.filter_alt,
+            color: hasActiveFilters ? Colors.amber : Colors.white,
+            size: 24,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Sort & Filter',
+            style: TextStyle(
+              color: hasActiveFilters ? Colors.amber : Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+        ],
+      ),
+      items: [
+        // Sort options header
+        const HoverDropdownItem(
+          text: 'Sort by',
+          isHeader: true,
+          icon: Icons.sort,
+        ),
+        
+        // Newest First
+        HoverDropdownItem(
+          text: 'Newest First',
+          icon: Icons.new_releases,
+          isSelected: filters.sortBy == SortOption.newest,
+          onTap: () {
+            ref.read(productFiltersProvider.notifier).updateSortBy(SortOption.newest);
+          },
+        ),
+        
+        // Price: Low to High
+        HoverDropdownItem(
+          text: 'Price: Low to High',
+          icon: Icons.arrow_upward,
+          isSelected: filters.sortBy == SortOption.priceLowToHigh,
+          onTap: () {
+            ref.read(productFiltersProvider.notifier).updateSortBy(SortOption.priceLowToHigh);
+          },
+        ),
+        
+        // Price: High to Low
+        HoverDropdownItem(
+          text: 'Price: High to Low',
+          icon: Icons.arrow_downward,
+          isSelected: filters.sortBy == SortOption.priceHighToLow,
+          onTap: () {
+            ref.read(productFiltersProvider.notifier).updateSortBy(SortOption.priceHighToLow);
+          },
+        ),
+        
+        // Popularity
+        HoverDropdownItem(
+          text: 'Popularity',
+          icon: Icons.trending_up,
+          isSelected: filters.sortBy == SortOption.popularity,
+          onTap: () {
+            ref.read(productFiltersProvider.notifier).updateSortBy(SortOption.popularity);
+          },
+        ),
+
+        const HoverDropdownDivider(),
+
+        // Price range header
+        const HoverDropdownItem(
+          text: 'Price Range',
+          isHeader: true,
+          icon: Icons.currency_rupee,
+        ),
+        
+        // Under ₹500
+        HoverDropdownItem(
+          text: 'Under ₹500',
+          icon: Icons.currency_rupee,
+          isSelected: filters.maxPrice == 500,
+          onTap: () {
+            ref.read(productFiltersProvider.notifier).updatePriceRange(0, 500);
+          },
+        ),
+        
+        // ₹500 - ₹2000
+        HoverDropdownItem(
+          text: '₹500 - ₹2000',
+          icon: Icons.currency_rupee,
+          isSelected: filters.minPrice == 500 && filters.maxPrice == 2000,
+          onTap: () {
+            ref.read(productFiltersProvider.notifier).updatePriceRange(500, 2000);
+          },
+        ),
+        
+        // Above ₹2000
+        HoverDropdownItem(
+          text: 'Above ₹2000',
+          icon: Icons.currency_rupee,
+          isSelected: filters.minPrice == 2000 && filters.maxPrice == null,
+          onTap: () {
+            ref.read(productFiltersProvider.notifier).updatePriceRange(2000, null);
+          },
+        ),
+
+        const HoverDropdownDivider(),
+
+        // Rating header
+        const HoverDropdownItem(
+          text: 'Rating',
+          isHeader: true,
+          icon: Icons.star,
+        ),
+        
+        // 4★ & above
+        HoverDropdownItem(
+          text: '4★ & above',
+          icon: Icons.star,
+          isSelected: filters.minRating == 4,
+          onTap: () {
+            ref.read(productFiltersProvider.notifier).updateRating(4);
+          },
+        ),
+        
+        // 3★ & above
+        HoverDropdownItem(
+          text: '3★ & above',
+          icon: Icons.star,
+          isSelected: filters.minRating == 3,
+          onTap: () {
+            ref.read(productFiltersProvider.notifier).updateRating(3);
+          },
+        ),
+
+        if (hasActiveFilters) ...[
+          const HoverDropdownDivider(),
+          
+          // Reset filters
+          HoverDropdownItem(
+            text: 'Reset All Filters',
+            icon: Icons.refresh,
+            onTap: () {
+              ref.read(productFiltersProvider.notifier).resetFilters();
+            },
+          ),
+        ],
+      ],
     );
   }
 } 

@@ -24,11 +24,12 @@ class CategoryProductsScreen extends ConsumerStatefulWidget {
 }
 
 class _CategoryProductsScreenState extends ConsumerState<CategoryProductsScreen> {
-  late String decodedCategory;
-  late String? decodedSubcategory;
   bool isLoading = true;
   String? error;
   List<ProductModel> products = [];
+  
+  late String decodedCategory;
+  String? decodedSubcategory;
 
   @override
   void initState() {
@@ -37,7 +38,6 @@ class _CategoryProductsScreenState extends ConsumerState<CategoryProductsScreen>
     decodedSubcategory = widget.subcategory != null 
         ? Uri.decodeComponent(widget.subcategory!)
         : null;
-    
     _loadProducts();
   }
 
@@ -48,33 +48,23 @@ class _CategoryProductsScreenState extends ConsumerState<CategoryProductsScreen>
         error = null;
       });
 
-      // Build base query
-      Query query = FirebaseFirestore.instance.collection('products');
-      
-      // Add filters one by one
-      query = query.where('category', isEqualTo: decodedCategory);
-      
-      if (decodedSubcategory != null && decodedSubcategory!.isNotEmpty) {
+      // Create a query for the category
+      Query query = FirebaseFirestore.instance
+          .collection('products')
+          .where('category', isEqualTo: decodedCategory)
+          .where('isApproved', isEqualTo: true);
+
+      // Add subcategory filter if present
+      if (decodedSubcategory != null) {
         query = query.where('subcategory', isEqualTo: decodedSubcategory);
       }
-      
-      // Add active and approved filters
-      query = query.where('isActive', isEqualTo: true);
-      query = query.where('isApproved', isEqualTo: true);
-      
-      // Add sorting
-      query = query.orderBy('createdAt', descending: true);
 
-      // Execute query
-      final querySnapshot = await query.get();
+      final snapshot = await query.get();
       
-      // Convert to products
-      final loadedProducts = querySnapshot.docs
-          .map((doc) => ProductModel.fromJson(doc.data() as Map<String, dynamic>))
-          .toList();
-
       setState(() {
-        products = loadedProducts;
+        products = snapshot.docs
+            .map((doc) => ProductModel.fromMap(doc.data() as Map<String, dynamic>))
+            .toList();
         isLoading = false;
       });
     } catch (e) {
@@ -82,7 +72,6 @@ class _CategoryProductsScreenState extends ConsumerState<CategoryProductsScreen>
         error = e.toString();
         isLoading = false;
       });
-      debugPrint('Error loading products: $e');
     }
   }
 

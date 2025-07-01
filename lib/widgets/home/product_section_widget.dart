@@ -126,7 +126,7 @@ class ProductSectionWidget extends ConsumerWidget {
         }
 
         // Show only display count products
-        final productsToShow = section.displayProducts;
+        final productsToShow = section.products;
 
         return GridView.builder(
           shrinkWrap: true,
@@ -140,7 +140,7 @@ class ProductSectionWidget extends ConsumerWidget {
           itemCount: productsToShow.length,
           itemBuilder: (context, index) {
             final product = productsToShow[index];
-            return _buildRecommendedProductCard(product);
+            return ProductCard(product: product);
           },
         );
       },
@@ -215,15 +215,6 @@ class ProductSectionWidget extends ConsumerWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildRecommendedProductCard(ProductModel product) {
-    return GestureDetector(
-      onTap: () => context.go('/product/${product.id}'),
-      child: Container(
-        // ... existing code ...
       ),
     );
   }

@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../constants/app_constants.dart';
 import '../../services/firestore_service.dart';
+import '../../widgets/home/hover_dropdown_menu.dart';
 
 /// Provider for vendor analytics
 final vendorAnalyticsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
@@ -34,9 +35,36 @@ class VendorDashboardScreen extends ConsumerWidget {
               // Show notifications
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.person),
-            onPressed: () => context.go('/profile'),
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: HoverDropdownMenu(
+              menuWidth: 200,
+              offset: const Offset(-160, 8),
+              trigger: const Icon(Icons.person),
+              items: [
+                HoverDropdownItem(
+                  text: 'Profile Settings',
+                  onTap: () => context.go('/profile'),
+                  icon: Icons.settings,
+                ),
+                HoverDropdownItem(
+                  text: 'My Products',
+                  onTap: () => context.go('/vendor/products'),
+                  icon: Icons.inventory,
+                ),
+                HoverDropdownItem(
+                  text: 'Orders',
+                  onTap: () => context.go('/vendor/orders'),
+                  icon: Icons.shopping_bag,
+                ),
+                const HoverDropdownDivider(),
+                HoverDropdownItem(
+                  text: 'Sign Out',
+                  onTap: () => ref.read(userProvider.notifier).signOut(),
+                  icon: Icons.logout,
+                ),
+              ],
+            ),
           ),
         ],
       ),

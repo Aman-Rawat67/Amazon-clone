@@ -31,7 +31,10 @@ class SortFilterWidget extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(
+              color: selectedSort != SortOption.newest ? Colors.blue : Colors.grey.shade300,
+              width: selectedSort != SortOption.newest ? 2 : 1,
+            ),
             borderRadius: BorderRadius.circular(4),
           ),
           child: DropdownButtonHideUnderline(
@@ -39,7 +42,11 @@ class SortFilterWidget extends StatelessWidget {
               value: selectedSort,
               isDense: true,
               hint: const Text('Sort By'),
-              icon: const Icon(Icons.sort, size: 16),
+              icon: Icon(
+                Icons.sort,
+                size: 16,
+                color: selectedSort != SortOption.newest ? Colors.blue : null,
+              ),
               onChanged: (value) {
                 if (value != null) {
                   onSortChanged(value);
@@ -50,7 +57,11 @@ class SortFilterWidget extends StatelessWidget {
                   value: option,
                   child: Text(
                     option.displayName,
-                    style: const TextStyle(fontSize: 14),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: selectedSort == option ? Colors.blue : null,
+                      fontWeight: selectedSort == option ? FontWeight.bold : null,
+                    ),
                   ),
                 );
               }).toList(),
@@ -62,7 +73,12 @@ class SortFilterWidget extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(
+              color: selectedPriceRange.start > 0 || selectedPriceRange.end < double.infinity
+                  ? Colors.blue
+                  : Colors.grey.shade300,
+              width: selectedPriceRange.start > 0 || selectedPriceRange.end < double.infinity ? 2 : 1,
+            ),
             borderRadius: BorderRadius.circular(4),
           ),
           child: DropdownButtonHideUnderline(
@@ -70,18 +86,29 @@ class SortFilterWidget extends StatelessWidget {
               value: _getCurrentPriceRange(),
               isDense: true,
               hint: const Text('Price Range'),
-              icon: const Icon(Icons.attach_money, size: 16),
+              icon: Icon(
+                Icons.attach_money,
+                size: 16,
+                color: selectedPriceRange.start > 0 || selectedPriceRange.end < double.infinity
+                    ? Colors.blue
+                    : null,
+              ),
               onChanged: (PriceRange? range) {
                 if (range != null) {
                   onPriceRangeChanged(range.min, range.max);
                 }
               },
               items: FilterConstants.priceRanges.map((range) {
+                final isSelected = range == _getCurrentPriceRange();
                 return DropdownMenuItem(
                   value: range,
                   child: Text(
                     range.label,
-                    style: const TextStyle(fontSize: 14),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isSelected ? Colors.blue : null,
+                      fontWeight: isSelected ? FontWeight.bold : null,
+                    ),
                   ),
                 );
               }).toList(),
@@ -93,7 +120,10 @@ class SortFilterWidget extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(
+              color: selectedRating > 0 ? Colors.blue : Colors.grey.shade300,
+              width: selectedRating > 0 ? 2 : 1,
+            ),
             borderRadius: BorderRadius.circular(4),
           ),
           child: DropdownButtonHideUnderline(
@@ -101,26 +131,50 @@ class SortFilterWidget extends StatelessWidget {
               value: selectedRating,
               isDense: true,
               hint: const Text('Rating'),
-              icon: const Icon(Icons.star_border, size: 16),
+              icon: Icon(
+                Icons.star_border,
+                size: 16,
+                color: selectedRating > 0 ? Colors.blue : null,
+              ),
               onChanged: (value) {
                 onRatingChanged(value);
               },
               items: FilterConstants.ratingFilters.map((rating) {
+                final isSelected = rating == selectedRating;
                 return DropdownMenuItem(
                   value: rating,
                   child: rating == 0
-                      ? const Text('All Ratings', style: TextStyle(fontSize: 14))
+                      ? Text(
+                          'All Ratings',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isSelected ? Colors.blue : null,
+                            fontWeight: isSelected ? FontWeight.bold : null,
+                          ),
+                        )
                       : Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               '${rating.toInt()}',
-                              style: const TextStyle(fontSize: 14),
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isSelected ? Colors.blue : null,
+                                fontWeight: isSelected ? FontWeight.bold : null,
+                              ),
                             ),
-                            const Icon(Icons.star, size: 14, color: Colors.amber),
-                            const Text(
+                            Icon(
+                              Icons.star,
+                              size: 14,
+                              color: isSelected ? Colors.blue : Colors.amber,
+                            ),
+                            Text(
                               ' & up',
-                              style: TextStyle(fontSize: 14),
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isSelected ? Colors.blue : null,
+                                fontWeight: isSelected ? FontWeight.bold : null,
+                              ),
                             ),
                           ],
                         ),

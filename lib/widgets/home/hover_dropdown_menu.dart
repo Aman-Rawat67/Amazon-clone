@@ -21,6 +21,7 @@ class HoverDropdownMenu extends StatefulWidget {
 
 class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
   bool _isHovered = false;
+  bool _isMenuHovered = false;
   final _menuKey = GlobalKey();
   OverlayEntry? _overlayEntry;
 
@@ -36,27 +37,52 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
     final size = renderBox.size;
     final offset = renderBox.localToGlobal(Offset.zero);
+    
+    // Get screen size
+    final screenSize = MediaQuery.of(context).size;
+    
+    // Calculate available space below and to the right
+    final spaceBelow = screenSize.height - (offset.dy + size.height + widget.offset.dy);
+    final spaceRight = screenSize.width - (offset.dx + widget.offset.dx + widget.menuWidth);
+    
+    // Adjust horizontal position if menu would go off-screen
+    final leftOffset = spaceRight < 0
+        ? offset.dx + widget.offset.dx - (widget.menuWidth + spaceRight)
+        : offset.dx + widget.offset.dx;
+    
+    // Decide whether to show menu above or below
+    final showAbove = spaceBelow < 400 && offset.dy > spaceBelow;
+    
+    // Calculate final vertical position
+    final topOffset = showAbove 
+        ? offset.dy - 400 // Show above
+        : offset.dy + size.height + widget.offset.dy; // Show below
 
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
-        left: offset.dx + widget.offset.dx,
-        top: offset.dy + size.height + widget.offset.dy,
+        left: leftOffset,
+        top: topOffset,
         child: MouseRegion(
-          onEnter: (_) => setState(() => _isHovered = true),
-          onExit: (_) => setState(() => _isHovered = false),
+          onEnter: (_) => setState(() => _isMenuHovered = true),
+          onExit: (_) => _handleMenuExit(),
           child: Material(
             elevation: 8,
             borderRadius: BorderRadius.circular(4),
             child: Container(
               width: widget.menuWidth,
+              constraints: BoxConstraints(
+                maxHeight: 400, // Maximum height for the menu
+              ),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: Colors.grey.shade300),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: widget.items ?? [],
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: widget.items ?? [],
+                ),
               ),
             ),
           ),
@@ -72,28 +98,35 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
     _overlayEntry = null;
   }
 
-  void _updateHoverState(bool isHovered) {
-    setState(() {
-      _isHovered = isHovered;
+  void _handleMenuExit() {
+    setState(() => _isMenuHovered = false);
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+      if (!_isHovered && !_isMenuHovered) {
+        _removeOverlay();
+      }
     });
+  }
 
-    if (isHovered) {
-      _showOverlay(context);
-    } else {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (!_isHovered) {
-          _removeOverlay();
-        }
-      });
-    }
+  void _handleTriggerExit() {
+    setState(() => _isHovered = false);
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+      if (!_isHovered && !_isMenuHovered) {
+        _removeOverlay();
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
       key: _menuKey,
-      onEnter: (_) => _updateHoverState(true),
-      onExit: (_) => _updateHoverState(false),
+      onEnter: (_) => setState(() {
+        _isHovered = true;
+        _showOverlay(context);
+      }),
+      onExit: (_) => _handleTriggerExit(),
       child: widget.trigger,
     );
   }
@@ -105,7 +138,7 @@ class HoverDropdownItem extends StatelessWidget {
   final VoidCallback? onTap;
   final bool isSelected;
   final IconData? icon;
-  final bool showDivider;
+  final bool isHeader;
 
   const HoverDropdownItem({
     super.key,
@@ -113,43 +146,64 @@ class HoverDropdownItem extends StatelessWidget {
     this.onTap,
     this.isSelected = false,
     this.icon,
-    this.showDivider = false,
+    this.isHeader = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        InkWell(
-          onTap: onTap,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: isSelected ? Colors.grey.shade100 : Colors.transparent,
-            child: Row(
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 16, color: Colors.grey.shade700),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Text(
-                    text,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade800,
-                      fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
-                    ),
-                  ),
+    return InkWell(
+      onTap: isHeader ? null : onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        color: isSelected ? Colors.grey.shade100 : Colors.transparent,
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 16,
+                color: isHeader 
+                    ? Colors.black87
+                    : isSelected 
+                        ? Colors.amber
+                        : Colors.grey.shade700,
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isHeader 
+                      ? Colors.black87
+                      : isSelected 
+                          ? Colors.amber
+                          : Colors.grey.shade800,
+                  fontWeight: isHeader || isSelected
+                      ? FontWeight.w600
+                      : FontWeight.normal,
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
-        if (showDivider)
-          Divider(height: 1, color: Colors.grey.shade300),
-      ],
+      ),
+    );
+  }
+}
+
+/// Divider widget for hover dropdown menu
+class HoverDropdownDivider extends StatelessWidget {
+  const HoverDropdownDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Divider(
+      height: 1,
+      thickness: 1,
+      color: Colors.grey.shade200,
     );
   }
 } 

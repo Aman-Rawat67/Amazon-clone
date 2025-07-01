@@ -63,9 +63,9 @@ class Validators {
     }
     
     // Remove all non-digit characters for validation
-    String cleaned = value.replaceAll(RegExp(r'[^\d+]'), '');
+    String cleaned = value.replaceAll(RegExp(r'[^\d]'), '');
     
-    // Check for 10 digits
+    // Check for 10 digits (Indian mobile numbers)
     if (!RegExp(r'^\d{10}$').hasMatch(cleaned)) {
       return 'Please enter a valid 10-digit phone number';
     }

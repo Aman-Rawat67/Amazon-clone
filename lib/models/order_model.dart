@@ -52,6 +52,12 @@ class ShippingAddress {
   /// Creates a ShippingAddress from a pipe-delimited string
   factory ShippingAddress.fromString(String addressString) {
     final parts = addressString.split('|');
+    
+    // Ensure we have at least the minimum required fields
+    if (parts.length < 9) {
+      throw ArgumentError('Invalid address string format: insufficient fields');
+    }
+    
     return ShippingAddress(
       id: parts[0],
       name: parts[1],
