@@ -43,6 +43,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   bool _isAddingToCart = false;
   bool _isBuyingNow = false;
   ProductModel? _cachedProduct;
+  bool _addGiftOptions = false;
+  int _selectedQuantity = 1;
   late Future<ProductModel?> _productFuture;
 
   // Razorpay integration
@@ -92,7 +94,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       }
 
       // Get current quantity
-      final quantity = QuantitySelector.globalQuantity;
+      final quantity = _selectedQuantity;
 
       // Create cart item for this product
       final cartItem = CartItem(
@@ -234,6 +236,98 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         ),
       );
     }
+  }
+
+  /// Get expected delivery date with different formats
+  String _getExpectedDeliveryDate() {
+    final deliveryDate = DateTime.now().add(const Duration(days: 4));
+    final weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    final weekday = weekdays[deliveryDate.weekday - 1];
+    final day = deliveryDate.day;
+    final month = months[deliveryDate.month - 1];
+    
+    return '$weekday, $day $month';
+  }
+
+  /// Get delivery time within day if order is placed within cutoff
+  String _getDeliveryTimeDetails() {
+    final now = DateTime.now();
+    final cutoffTime = DateTime(now.year, now.month, now.day, 14, 0); // 2 PM cutoff
+    
+    if (now.isBefore(cutoffTime)) {
+      return 'Order within 7 hrs 1 min.';
+    } else {
+      return 'Order by 2 PM for next day delivery.';
+    }
+  }
+
+  /// Calculate if free delivery applies
+  bool _isFreeDeliveryApplicable(double totalPrice) {
+    return totalPrice >= 100.0;
+  }
+
+  /// Update quantity and sync with global state
+  void _updateQuantity(int newQuantity) {
+    setState(() {
+      _selectedQuantity = newQuantity;
+      QuantitySelector.globalQuantity = newQuantity;
+    });
+  }
+
+  /// Handle add to wishlist functionality
+  void _handleAddToWishlist(ProductModel product) {
+    // Show success message for now
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.favorite, color: Colors.white),
+            const SizedBox(width: 8),
+            Text('Added "${product.name}" to wishlist'),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Show delivery details popup
+  void _showDeliveryDetails() {
+    final currentTotal = _cachedProduct!.price * _selectedQuantity;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delivery Information'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Expected Delivery: ${_getExpectedDeliveryDate()}'),
+            const SizedBox(height: 8),
+            Text(
+              _isFreeDeliveryApplicable(currentTotal)
+                  ? 'FREE delivery on orders over ₹100'
+                  : 'Delivery fee: ₹10 (FREE on orders over ₹100)',
+            ),
+            const SizedBox(height: 8),
+            const Text('Delivery typically takes 3-5 business days.'),
+            if (_addGiftOptions) ...[
+              const SizedBox(height: 8),
+              const Text('Gift packaging will be included at no extra cost.'),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Show test payment dialog (fallback for web platform)
@@ -710,10 +804,10 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Product price
+                                // Product price (dynamic based on quantity)
                                 Text(
-                                  '₹860',
-                                  style: TextStyle(
+                                  '₹${(product.price * _selectedQuantity).toStringAsFixed(0)}',
+                                  style: const TextStyle(
                                     color: Colors.black,
                                     fontSize: 22,
                                     fontWeight: FontWeight.bold,
@@ -721,18 +815,22 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                 ),
                                 Row(
                                   children: [
-                                    // FREE Delivery text here something will open when we click
+                                    // Dynamic delivery text based on order total
                                     Text(
-                                      "FREE delivery",
+                                      _isFreeDeliveryApplicable(product.price * _selectedQuantity) 
+                                          ? "FREE delivery" 
+                                          : "₹10 delivery",
                                       style: TextStyle(
-                                        color: Colors.blue,
+                                        color: _isFreeDeliveryApplicable(product.price * _selectedQuantity) 
+                                            ? Colors.blue 
+                                            : Colors.orange,
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                     Text(
-                                      ' Thursday, 3 July.',
-                                      style: TextStyle(
+                                      ' ${_getExpectedDeliveryDate()}.',
+                                      style: const TextStyle(
                                         color: Colors.black,
                                         fontSize: 14,
                                         fontWeight: FontWeight.bold,
@@ -742,23 +840,25 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                 ),
                                 Row(
                                   children: [
-                                    Text('Order within'),
                                     Text(
-                                      '7 hrs 1 min. ',
-                                      style: TextStyle(
+                                      _getDeliveryTimeDetails(),
+                                      style: const TextStyle(
                                         color: Colors.green,
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    // This will be link
-                                    Text(
-                                      "Details",
-
-                                      style: TextStyle(
-                                        color: Colors.blue,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
+                                    const SizedBox(width: 4),
+                                    GestureDetector(
+                                      onTap: () => _showDeliveryDetails(),
+                                      child: const Text(
+                                        "Details",
+                                        style: TextStyle(
+                                          color: Colors.blue,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          decoration: TextDecoration.underline,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -784,11 +884,16 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                 ),
                                 const SizedBox(height: 20),
 
-                                const Text(
-                                  "In stock",
+                                Text(
+                                  product.isInStock 
+                                      ? "In stock" 
+                                      : "Out of stock",
                                   style: TextStyle(
-                                    color: Colors.green,
+                                    color: product.isInStock 
+                                        ? Colors.green 
+                                        : Colors.red,
                                     fontSize: 17,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -861,15 +966,15 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                 ),
 
                                 const SizedBox(height: 24),
+                                // Dynamic Quantity Selector
                                 Container(
-                                  height: 33,
+                                  height: 40,
                                   width: double.infinity,
                                   decoration: BoxDecoration(
                                     color: Colors.black12.withAlpha(10),
                                     borderRadius: BorderRadius.circular(7),
                                     border: Border.all(
                                       color: Colors.grey.shade400,
-
                                     ),
                                   ),
                                   padding: const EdgeInsets.symmetric(
@@ -881,29 +986,27 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 0,
                                       ),
-                                      value: 1,
+                                      value: _selectedQuantity,
                                       icon: const Icon(Icons.arrow_drop_down),
-                                      items:
-                                          List.generate(
-                                                10,
-                                                (index) => index + 1,
-                                              )
-                                              .map(
-                                                (qty) => DropdownMenuItem(
-                                                  value: qty,
-                                                  child: Text(
-                                                    "Quantity: $qty",
-                                                    style: TextStyle(
-                                                      color: Colors.black,
-                                                      fontWeight: FontWeight.w500,
-                                                      fontSize: 13,
-                                                    ),
-                                                  ),
+                                      items: List.generate(10, (index) => index + 1)
+                                          .map(
+                                            (qty) => DropdownMenuItem(
+                                              value: qty,
+                                              child: Text(
+                                                "Quantity: $qty",
+                                                style: const TextStyle(
+                                                  color: Colors.black,
+                                                  fontWeight: FontWeight.w500,
+                                                  fontSize: 13,
                                                 ),
-                                              )
-                                              .toList(),
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
                                       onChanged: (value) {
-                                        // handle value change
+                                        if (value != null) {
+                                          _updateQuantity(value);
+                                        }
                                       },
                                     ),
                                   ),
@@ -916,9 +1019,21 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.yellow[700],
                                       foregroundColor: Colors.black,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
                                     ),
-                                    onPressed: () {},
-                                    child: const Text("Add to Cart"),
+                                    onPressed: _isAddingToCart || !product.isInStock
+                                        ? null 
+                                        : () => _handleAddToCart(product),
+                                    child: _isAddingToCart
+                                        ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                            ),
+                                          )
+                                        : const Text("Add to Cart"),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -928,15 +1043,34 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.orange[700],
                                       foregroundColor: Colors.black,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
                                     ),
-                                    onPressed: () {},
-                                    child: const Text("Buy Now"),
+                                    onPressed: _isBuyingNow || !product.isInStock
+                                        ? null 
+                                        : () => _handleBuyNow(product),
+                                    child: _isBuyingNow
+                                        ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                            ),
+                                          )
+                                        : const Text("Buy Now"),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    Checkbox(value: false, onChanged: (_) {}),
+                                    Checkbox(
+                                      value: _addGiftOptions, 
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _addGiftOptions = value ?? false;
+                                        });
+                                      },
+                                    ),
                                     const Text("Add gift options"),
                                   ],
                                 ),
@@ -944,8 +1078,11 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                 SizedBox(
                                   width: double.infinity,
                                   child: OutlinedButton(
-                                    style: ButtonStyle(),
-                                    onPressed: () {},
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      side: const BorderSide(color: Colors.grey),
+                                    ),
+                                    onPressed: () => _handleAddToWishlist(product),
                                     child: const Text("Add to Wish List"),
                                   ),
                                 ),
@@ -2563,8 +2700,8 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
     try {
       final cartNotifier = ref.read(cartProvider.notifier);
-      // Get quantity from the global QuantitySelector state
-      final quantity = QuantitySelector.globalQuantity;
+      // Get quantity from the selected quantity state
+      final quantity = _selectedQuantity;
 
       await cartNotifier.addToCart(
         product: product,
@@ -2644,7 +2781,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       });
 
       // Get current quantity
-      final quantity = QuantitySelector.globalQuantity;
+      final quantity = _selectedQuantity;
 
       // Create cart item for this product
       final cartItem = CartItem(

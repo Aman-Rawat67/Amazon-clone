@@ -116,6 +116,32 @@ class TopNavBar extends ConsumerWidget {
               ),
             ],
 
+            // Offers
+            if (!isMobile) ...[
+              const SizedBox(width: 16),
+              TextButton(
+                onPressed: () => context.push('/offers'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.zero,
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.local_offer, size: 16, color: Colors.orange),
+                    SizedBox(width: 4),
+                    Text(
+                      'Offers',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             // Cart
             const SizedBox(width: 16),
             _buildCartButton(context, cartCount),

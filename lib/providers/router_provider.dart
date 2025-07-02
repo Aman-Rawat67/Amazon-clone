@@ -27,6 +27,7 @@ import '../screens/vendor/vendor_orders_screen.dart';
 import '../screens/customer/search_results_screen.dart';
 import '../screens/customer/address_screen.dart';
 import '../screens/customer/home_screen.dart';
+import '../screens/customer/all_offers_screen.dart';
 
 final routerNotifierProvider = Provider<RouterNotifier>((ref) {
   return RouterNotifier(ref);
@@ -235,6 +236,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           final query = state.uri.queryParameters['q'] ?? '';
           return SearchResultsScreen(query: query);
         },
+      ),
+      GoRoute(
+        path: '/offers',
+        builder: (context, state) => const AllOffersScreen(),
       ),
 
       // Vendor Routes

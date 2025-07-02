@@ -67,7 +67,10 @@ class ProductSectionWidget extends ConsumerWidget {
                 if (section.seeMoreText != null)
                   TextButton(
                     onPressed: () {
-                      if (section.seeMoreRoute != null) {
+                      // If it's a "See all offers" link, navigate to offers screen
+                      if (section.seeMoreText?.toLowerCase().contains('offers') == true) {
+                        context.push('/offers');
+                      } else if (section.seeMoreRoute != null) {
                         context.push(section.seeMoreRoute!);
                       } else {
                         final category = section.products.isNotEmpty

@@ -12,7 +12,6 @@ import '../../widgets/home/top_nav_bar.dart';
 import '../../widgets/home/category_nav_bar.dart';
 import '../../widgets/home/product_section_widget.dart';
 import '../../widgets/home/banner_carousel.dart';
-import '../../widgets/home/delivery_features_bar.dart';
 
 /// Dynamic Amazon-style homepage that fetches sections from Firebase
 class DynamicHomeScreen extends ConsumerWidget {
@@ -30,27 +29,33 @@ class DynamicHomeScreen extends ConsumerWidget {
         slivers: [
           // Main navigation with logo, search, account, cart
           const SliverToBoxAdapter(child: TopNavBar()),
-          
-          // Unified category navigation 
+
+          // Unified category navigation
           const SliverToBoxAdapter(child: CategoryNavBar()),
-          
+
           // Hero banner section
           SliverToBoxAdapter(
             child: banners.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(child: Text('Error loading banners: $error')),
+              error: (error, stack) =>
+                  Center(child: Text('Error loading banners: $error')),
               data: (bannerList) => BannerCarousel(banners: bannerList),
             ),
           ),
 
-          // Delivery features bar
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.only(top: 16),
-              child: DeliveryFeaturesBar(),
-            ),
+          // All Offers Banner
+          SliverToBoxAdapter(
+            child: _buildAllOffersBanner(context),
           ),
-          
+
+          // // Delivery features bar
+          // const SliverToBoxAdapter(
+          //   child: Padding(
+          //     padding: EdgeInsets.only(top: 16),
+          //     child: DeliveryFeaturesBar(),
+          //   ),
+          // ),
+
           // Dynamic product sections from Firestore
           SliverToBoxAdapter(
             child: Container(
@@ -66,21 +71,29 @@ class DynamicHomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-      bottomNavigationBar: isMobile ? _buildBottomNavigationBar(context, ref) : null,
+      bottomNavigationBar: isMobile
+          ? _buildBottomNavigationBar(context, ref)
+          : null,
     );
   }
 
   /// Build bottom navigation bar for mobile
-  BottomNavigationBar _buildBottomNavigationBar(BuildContext context, WidgetRef ref) {
+  BottomNavigationBar _buildBottomNavigationBar(
+    BuildContext context,
+    WidgetRef ref,
+  ) {
     final filters = ref.watch(productFiltersProvider);
-    
+
     return BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
       selectedFontSize: 12,
       unselectedFontSize: 12,
       items: [
         const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        const BottomNavigationBarItem(icon: Icon(Icons.shopping_cart), label: 'Cart'),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.shopping_cart),
+          label: 'Cart',
+        ),
         BottomNavigationBarItem(
           icon: Stack(
             clipBehavior: Clip.none,
@@ -109,8 +122,14 @@ class DynamicHomeScreen extends ConsumerWidget {
           ),
           label: filters.hasActiveFilters ? 'Filters On' : 'Sort & Filter',
         ),
-        const BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Orders'),
-        const BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.receipt),
+          label: 'Orders',
+        ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.person),
+          label: 'Profile',
+        ),
       ],
       currentIndex: 0, // Highlight home tab
       onTap: (index) {
@@ -144,19 +163,104 @@ class DynamicHomeScreen extends ConsumerWidget {
       builder: (context) => const _MobileSortFilterModal(),
     );
   }
+
+  /// Build all offers banner
+  Widget _buildAllOffersBanner(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFF6B35), Color(0xFFF7931E)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => context.push('/offers'),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.local_offer,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'All Offers & Deals',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Flash deals, bank offers, cashback & more',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Widget that dynamically loads and displays product sections from Firestore
 class _DynamicProductSections extends ConsumerStatefulWidget {
   @override
-  ConsumerState<_DynamicProductSections> createState() => _DynamicProductSectionsState();
+  ConsumerState<_DynamicProductSections> createState() =>
+      _DynamicProductSectionsState();
 }
 
-class _DynamicProductSectionsState extends ConsumerState<_DynamicProductSections> {
+class _DynamicProductSectionsState
+    extends ConsumerState<_DynamicProductSections> {
   Widget _buildLoadingState() {
-    return const Center(
-      child: CircularProgressIndicator(),
-    );
+    return const Center(child: CircularProgressIndicator());
   }
 
   Widget _buildErrorState(BuildContext context, Object error, WidgetRef ref) {
@@ -178,9 +282,7 @@ class _DynamicProductSectionsState extends ConsumerState<_DynamicProductSections
   }
 
   Widget _buildNoResultsState() {
-    return const Center(
-      child: Text('No products found'),
-    );
+    return const Center(child: Text('No products found'));
   }
 
   @override
@@ -212,7 +314,10 @@ class _DynamicProductSectionsState extends ConsumerState<_DynamicProductSections
     );
   }
 
-  Widget _buildFilteredProducts(List<ProductModel> products, ProductFilters filters) {
+  Widget _buildFilteredProducts(
+    List<ProductModel> products,
+    ProductFilters filters,
+  ) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -302,7 +407,9 @@ class _DynamicProductSectionsState extends ConsumerState<_DynamicProductSections
       } else if (filters.minPrice == 2000) {
         filterParts.add('Above ₹2000');
       } else {
-        filterParts.add('₹${filters.minPrice?.round() ?? 0} - ₹${filters.maxPrice?.round() ?? 10000}');
+        filterParts.add(
+          '₹${filters.minPrice?.round() ?? 0} - ₹${filters.maxPrice?.round() ?? 10000}',
+        );
       }
     }
 
@@ -319,10 +426,12 @@ class _MobileSortFilterModal extends ConsumerStatefulWidget {
   const _MobileSortFilterModal();
 
   @override
-  ConsumerState<_MobileSortFilterModal> createState() => _MobileSortFilterModalState();
+  ConsumerState<_MobileSortFilterModal> createState() =>
+      _MobileSortFilterModalState();
 }
 
-class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> {
+class _MobileSortFilterModalState
+    extends ConsumerState<_MobileSortFilterModal> {
   late SortOption selectedSort;
   late RangeValues priceRange;
   late double minRating;
@@ -333,17 +442,15 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
     super.initState();
     final filters = ref.read(productFiltersProvider);
     selectedSort = filters.sortBy;
-    priceRange = RangeValues(
-      filters.minPrice ?? 0,
-      filters.maxPrice ?? 10000,
-    );
+    priceRange = RangeValues(filters.minPrice ?? 0, filters.maxPrice ?? 10000);
     minRating = filters.minRating ?? 0;
   }
 
   void _updateChangesFlag() {
     final filters = ref.read(productFiltersProvider);
     setState(() {
-      hasChanges = selectedSort != filters.sortBy ||
+      hasChanges =
+          selectedSort != filters.sortBy ||
           priceRange.start != (filters.minPrice ?? 0) ||
           priceRange.end != (filters.maxPrice ?? 10000) ||
           minRating != (filters.minRating ?? 0);
@@ -353,7 +460,7 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
   @override
   Widget build(BuildContext context) {
     final currentFilters = ref.watch(productFiltersProvider);
-    
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.8,
       decoration: const BoxDecoration(
@@ -372,7 +479,7 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          
+
           // Header
           Padding(
             padding: const EdgeInsets.all(16),
@@ -381,32 +488,33 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
               children: [
                 const Text(
                   'Sort & Filter',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 TextButton(
-                  onPressed: currentFilters.hasActiveFilters ? () {
-                    // Reset filters
-                    setState(() {
-                      selectedSort = SortOption.newest;
-                      priceRange = const RangeValues(0, 10000);
-                      minRating = 0;
-                      hasChanges = true;
-                    });
-                  } : null,
+                  onPressed: currentFilters.hasActiveFilters
+                      ? () {
+                          // Reset filters
+                          setState(() {
+                            selectedSort = SortOption.newest;
+                            priceRange = const RangeValues(0, 10000);
+                            minRating = 0;
+                            hasChanges = true;
+                          });
+                        }
+                      : null,
                   child: Text(
                     'Reset',
                     style: TextStyle(
-                      color: currentFilters.hasActiveFilters ? Colors.blue : Colors.grey,
+                      color: currentFilters.hasActiveFilters
+                          ? Colors.blue
+                          : Colors.grey,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          
+
           // Active filters summary
           if (currentFilters.hasActiveFilters)
             Container(
@@ -419,16 +527,13 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
                   Expanded(
                     child: Text(
                       _getFilterTitle(currentFilters),
-                      style: const TextStyle(
-                        color: Colors.blue,
-                        fontSize: 14,
-                      ),
+                      style: const TextStyle(color: Colors.blue, fontSize: 14),
                     ),
                   ),
                 ],
               ),
             ),
-          
+
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -438,41 +543,41 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
                   // Sort options
                   const Text(
                     'Sort by',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 12),
-                  ...SortOption.values.map((option) => RadioListTile<SortOption>(
-                    title: Text(_getSortOptionText(option)),
-                    value: option,
-                    groupValue: selectedSort,
-                    activeColor: Colors.blue,
-                    onChanged: (value) {
-                      setState(() {
-                        selectedSort = value!;
-                        _updateChangesFlag();
-                      });
-                    },
-                  )),
-                  
+                  ...SortOption.values.map(
+                    (option) => RadioListTile<SortOption>(
+                      title: Text(_getSortOptionText(option)),
+                      value: option,
+                      groupValue: selectedSort,
+                      activeColor: Colors.blue,
+                      onChanged: (value) {
+                        setState(() {
+                          selectedSort = value!;
+                          _updateChangesFlag();
+                        });
+                      },
+                    ),
+                  ),
+
                   const SizedBox(height: 24),
-                  
+
                   // Price range
                   const Text(
                     'Price Range',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 12),
                   Text(
                     '₹${priceRange.start.round()} - ₹${priceRange.end.round()}',
                     style: TextStyle(
-                      color: priceRange.start > 0 || priceRange.end < 10000 ? Colors.blue : null,
-                      fontWeight: priceRange.start > 0 || priceRange.end < 10000 ? FontWeight.w600 : null,
+                      color: priceRange.start > 0 || priceRange.end < 10000
+                          ? Colors.blue
+                          : null,
+                      fontWeight: priceRange.start > 0 || priceRange.end < 10000
+                          ? FontWeight.w600
+                          : null,
                     ),
                   ),
                   RangeSlider(
@@ -492,16 +597,13 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
                       });
                     },
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Rating filter
                   const Text(
                     'Minimum Rating',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 12),
                   ...List.generate(5, (index) {
@@ -509,13 +611,29 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
                     return CheckboxListTile(
                       title: Row(
                         children: [
-                          ...List.generate(rating.toInt(), (_) => const Icon(Icons.star, color: Colors.amber, size: 16)),
-                          ...List.generate(5 - rating.toInt(), (_) => const Icon(Icons.star_border, color: Colors.grey, size: 16)),
+                          ...List.generate(
+                            rating.toInt(),
+                            (_) => const Icon(
+                              Icons.star,
+                              color: Colors.amber,
+                              size: 16,
+                            ),
+                          ),
+                          ...List.generate(
+                            5 - rating.toInt(),
+                            (_) => const Icon(
+                              Icons.star_border,
+                              color: Colors.grey,
+                              size: 16,
+                            ),
+                          ),
                           Text(
                             ' & above',
                             style: TextStyle(
                               color: minRating == rating ? Colors.blue : null,
-                              fontWeight: minRating == rating ? FontWeight.w600 : null,
+                              fontWeight: minRating == rating
+                                  ? FontWeight.w600
+                                  : null,
                             ),
                           ),
                         ],
@@ -534,7 +652,7 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
               ),
             ),
           ),
-          
+
           // Apply button
           Container(
             padding: const EdgeInsets.all(16),
@@ -552,20 +670,28 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: hasChanges ? () {
-                  // Apply filters
-                  ref.read(productFiltersProvider.notifier).updateSortBy(selectedSort);
-                  ref.read(productFiltersProvider.notifier).updatePriceRange(
-                    priceRange.start == 0 ? null : priceRange.start,
-                    priceRange.end == 10000 ? null : priceRange.end,
-                  );
-                  ref.read(productFiltersProvider.notifier).updateRating(
-                    minRating == 0 ? null : minRating,
-                  );
-                  Navigator.pop(context);
-                } : null,
+                onPressed: hasChanges
+                    ? () {
+                        // Apply filters
+                        ref
+                            .read(productFiltersProvider.notifier)
+                            .updateSortBy(selectedSort);
+                        ref
+                            .read(productFiltersProvider.notifier)
+                            .updatePriceRange(
+                              priceRange.start == 0 ? null : priceRange.start,
+                              priceRange.end == 10000 ? null : priceRange.end,
+                            );
+                        ref
+                            .read(productFiltersProvider.notifier)
+                            .updateRating(minRating == 0 ? null : minRating);
+                        Navigator.pop(context);
+                      }
+                    : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: hasChanges ? const Color(0xFFFF9900) : Colors.grey[300],
+                  backgroundColor: hasChanges
+                      ? const Color(0xFFFF9900)
+                      : Colors.grey[300],
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -633,7 +759,9 @@ class _MobileSortFilterModalState extends ConsumerState<_MobileSortFilterModal> 
       } else if (filters.minPrice == 2000) {
         filterParts.add('Above ₹2000');
       } else {
-        filterParts.add('₹${filters.minPrice?.round() ?? 0} - ₹${filters.maxPrice?.round() ?? 10000}');
+        filterParts.add(
+          '₹${filters.minPrice?.round() ?? 0} - ₹${filters.maxPrice?.round() ?? 10000}',
+        );
       }
     }
 

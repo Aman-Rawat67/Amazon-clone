@@ -93,7 +93,7 @@ class FirestoreService {
         'category': category,
         'productIds': [firstProductId],
         'seeMoreText': 'See all offers',
-        'seeMoreRoute': '/home/category/$encodedCategory',
+        'seeMoreRoute': '/category/$encodedCategory',
         'displayCount': 4,
         'isActive': true,
         'order': await _getNextSectionOrder(),

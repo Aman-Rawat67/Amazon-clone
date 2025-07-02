@@ -12,17 +12,17 @@ class DemoDataCreator {
   static Future<void> createDemoData() async {
     try {
       print('🚀 Starting demo data creation...');
-      
+
       // First create demo products
       final productIds = await _createDemoProducts();
-      
+
       if (productIds.length < 16) {
         throw Exception('Need at least 16 products to create demo sections');
       }
-      
+
       // Then create demo product sections
       await _createDemoProductSections(productIds);
-      
+
       print('✅ Demo data created successfully!');
       print('📱 You can now see the dynamic homepage with product sections.');
     } catch (e) {
@@ -34,7 +34,7 @@ class DemoDataCreator {
   /// Create demo products with realistic data
   static Future<List<String>> _createDemoProducts() async {
     print('📦 Creating demo products...');
-    
+
     final demoProducts = [
       // Clothing
       ProductModel(
@@ -45,7 +45,9 @@ class DemoDataCreator {
         originalPrice: 1499.0,
         category: 'clothing',
         subcategory: 'men',
-        imageUrls: ['https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500&h=500&fit=crop'],
+        imageUrls: [
+          'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500&h=500&fit=crop',
+        ],
         vendorId: 'demo_vendor_1',
         vendorName: 'FashionHub',
         stockQuantity: 50,
@@ -58,8 +60,10 @@ class DemoDataCreator {
         colors: ['Blue', 'White', 'Black'],
         sizes: ['S', 'M', 'L', 'XL'],
         createdAt: DateTime.now(),
+        categoryLower: '',
+        subcategoryLower: '',
       ),
-      
+
       // Electronics
       ProductModel(
         id: 'demo_2',
@@ -69,7 +73,9 @@ class DemoDataCreator {
         originalPrice: 34999.0,
         category: 'electronics',
         subcategory: 'mobile phones',
-        imageUrls: ['https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=500&h=500&fit=crop'],
+        imageUrls: [
+          'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=500&h=500&fit=crop',
+        ],
         vendorId: 'demo_vendor_2',
         vendorName: 'TechStore',
         stockQuantity: 30,
@@ -81,6 +87,8 @@ class DemoDataCreator {
         tags: ['smartphone', 'mobile', 'electronics'],
         colors: ['Black', 'Silver'],
         createdAt: DateTime.now(),
+        categoryLower: '',
+        subcategoryLower: '',
       ),
 
       // Handloom
@@ -92,7 +100,9 @@ class DemoDataCreator {
         originalPrice: 1999.0,
         category: 'handloom',
         subcategory: 'bedsheets',
-        imageUrls: ['https://images.unsplash.com/photo-1584100936595-c0654b55a2e6?w=500&h=500&fit=crop'],
+        imageUrls: [
+          'https://images.unsplash.com/photo-1584100936595-c0654b55a2e6?w=500&h=500&fit=crop',
+        ],
         vendorId: 'demo_vendor_3',
         vendorName: 'HomeTex',
         stockQuantity: 40,
@@ -104,6 +114,8 @@ class DemoDataCreator {
         tags: ['bedsheet', 'cotton', 'home'],
         colors: ['White', 'Blue', 'Pink'],
         createdAt: DateTime.now(),
+        categoryLower: '',
+        subcategoryLower: '',
       ),
 
       // Automotive
@@ -115,7 +127,9 @@ class DemoDataCreator {
         originalPrice: 5999.0,
         category: 'automotive',
         subcategory: 'dash cam',
-        imageUrls: ['https://images.unsplash.com/photo-1617531653332-bd46c24f2068?w=500&h=500&fit=crop'],
+        imageUrls: [
+          'https://images.unsplash.com/photo-1617531653332-bd46c24f2068?w=500&h=500&fit=crop',
+        ],
         vendorId: 'demo_vendor_4',
         vendorName: 'AutoTech',
         stockQuantity: 25,
@@ -126,6 +140,8 @@ class DemoDataCreator {
         specifications: {'resolution': '1080p', 'storage': '32GB'},
         tags: ['dash cam', 'car', 'camera'],
         createdAt: DateTime.now(),
+        categoryLower: '',
+        subcategoryLower: '',
       ),
 
       // Home
@@ -137,7 +153,9 @@ class DemoDataCreator {
         originalPrice: 9999.0,
         category: 'home',
         subcategory: 'furniture',
-        imageUrls: ['https://images.unsplash.com/photo-1533090481720-856c6e3c1fdc?w=500&h=500&fit=crop'],
+        imageUrls: [
+          'https://images.unsplash.com/photo-1533090481720-856c6e3c1fdc?w=500&h=500&fit=crop',
+        ],
         vendorId: 'demo_vendor_5',
         vendorName: 'HomeStyle',
         stockQuantity: 15,
@@ -149,11 +167,13 @@ class DemoDataCreator {
         tags: ['furniture', 'table', 'living room'],
         colors: ['Brown', 'White'],
         createdAt: DateTime.now(),
+        categoryLower: '',
+        subcategoryLower: '',
       ),
     ];
 
     final productIds = <String>[];
-    
+
     for (final product in demoProducts) {
       try {
         final productId = await _firestoreService.addProduct(product);
@@ -163,15 +183,17 @@ class DemoDataCreator {
         print('⚠️ Failed to create product ${product.name}: $e');
       }
     }
-    
+
     print('📦 Created ${productIds.length} demo products');
     return productIds;
   }
 
   /// Create demo product sections using the created products
-  static Future<void> _createDemoProductSections(List<String> productIds) async {
+  static Future<void> _createDemoProductSections(
+    List<String> productIds,
+  ) async {
     print('🏪 Creating demo product sections...');
-    
+
     final demoSections = [
       {
         'title': 'Electronics & Gadgets | Up to 40% off',
@@ -199,10 +221,7 @@ class DemoDataCreator {
         'order': 1,
         'isActive': true,
         'createdAt': Timestamp.fromDate(DateTime.now()),
-        'metadata': {
-          'backgroundColor': '#ffffff',
-          'textColor': '#000000',
-        },
+        'metadata': {'backgroundColor': '#ffffff', 'textColor': '#000000'},
       },
       {
         'title': 'Home & Kitchen Essentials',
@@ -214,10 +233,7 @@ class DemoDataCreator {
         'order': 2,
         'isActive': true,
         'createdAt': Timestamp.fromDate(DateTime.now()),
-        'metadata': {
-          'backgroundColor': '#ffffff',
-          'textColor': '#000000',
-        },
+        'metadata': {'backgroundColor': '#ffffff', 'textColor': '#000000'},
       },
       {
         'title': 'Books & Learning | Starting ₹599',
@@ -229,10 +245,7 @@ class DemoDataCreator {
         'order': 3,
         'isActive': true,
         'createdAt': Timestamp.fromDate(DateTime.now()),
-        'metadata': {
-          'backgroundColor': '#ffffff',
-          'textColor': '#000000',
-        },
+        'metadata': {'backgroundColor': '#ffffff', 'textColor': '#000000'},
       },
     ];
 
@@ -246,7 +259,7 @@ class DemoDataCreator {
         print('⚠️ Failed to create section ${section['title']}: $e');
       }
     }
-    
+
     print('🏪 Created ${demoSections.length} demo product sections');
   }
 
@@ -254,37 +267,38 @@ class DemoDataCreator {
   static Future<void> clearDemoData() async {
     try {
       print('🗑️ Clearing demo data...');
-      
+
       // Clear demo products
       final products = await FirebaseFirestore.instance
           .collection(AppConstants.productsCollection)
           .where('id', whereIn: List.generate(16, (i) => 'demo_${i + 1}'))
           .get();
-      
+
       for (final doc in products.docs) {
         await doc.reference.delete();
       }
-      
+
       // Clear demo product sections
       final sections = await FirebaseFirestore.instance
           .collection(AppConstants.productSectionsCollection)
           .get();
-      
+
       for (final doc in sections.docs) {
         final data = doc.data();
         final title = data['title'] as String?;
-        if (title != null && (title.contains('Electronics & Gadgets') ||
-            title.contains('Fashion Trends') ||
-            title.contains('Home & Kitchen Essentials') ||
-            title.contains('Books & Learning'))) {
+        if (title != null &&
+            (title.contains('Electronics & Gadgets') ||
+                title.contains('Fashion Trends') ||
+                title.contains('Home & Kitchen Essentials') ||
+                title.contains('Books & Learning'))) {
           await doc.reference.delete();
         }
       }
-      
+
       print('✅ Demo data cleared successfully');
     } catch (e) {
       print('❌ Error clearing demo data: $e');
       rethrow;
     }
   }
-} 
+}
