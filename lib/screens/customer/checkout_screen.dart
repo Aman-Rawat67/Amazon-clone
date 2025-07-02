@@ -172,11 +172,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           if (order.id.isEmpty) {
             throw Exception('Order ID is empty');
           }
-          context.go('/home/order-success', extra: order);
+          context.go('/order-success', extra: order);
         } catch (navigationError) {
           print('🔥 Navigation error: $navigationError');
-          // Fallback: Go to orders page or home
-          context.go('/home/orders');
+          // Fallback: Go to orders page
+          context.go('/orders');
         }
       }
     } catch (e) {

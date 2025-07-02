@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/product_model.dart';
 import '../services/firestore_service.dart';
 import '../constants/filter_constants.dart';
+import 'package:flutter/foundation.dart';
 
 /// Provider for product management
 final productProvider = StateNotifierProvider<ProductNotifier, AsyncValue<List<ProductModel>>>((ref) {
@@ -295,18 +296,36 @@ final productFiltersProvider = StateNotifierProvider<ProductFiltersNotifier, Pro
 /// Notifier for product filters
 class ProductFiltersNotifier extends StateNotifier<ProductFilters> {
   ProductFiltersNotifier() : super(const ProductFilters());
+  bool _isUpdating = false;
+
+  void resetFilters() {
+    if (_isUpdating || state == const ProductFilters()) return;
+    _isUpdating = true;
+    
+    debugPrint("debugging:: resetting all filters");
+    state = const ProductFilters();
+    _isUpdating = false;
+  }
 
   void updateCategory(String? category) {
-    if (category?.toLowerCase() == state.category?.toLowerCase()) return;
+    if (_isUpdating || category?.toLowerCase() == state.category?.toLowerCase()) return;
+    _isUpdating = true;
+    
+    debugPrint("debugging:: updating category to: $category");
     state = state.copyWith(
       category: category,
       clearSubcategory: true, // Clear subcategory when category changes
     );
+    _isUpdating = false;
   }
 
   void updateSubcategory(String? subcategory) {
-    if (subcategory?.toLowerCase() == state.subcategory?.toLowerCase()) return;
+    if (_isUpdating || subcategory?.toLowerCase() == state.subcategory?.toLowerCase()) return;
+    _isUpdating = true;
+    
+    debugPrint("debugging:: updating subcategory to: $subcategory");
     state = state.copyWith(subcategory: subcategory);
+    _isUpdating = false;
   }
 
   void updateSortBy(SortOption sortBy) {
@@ -334,11 +353,6 @@ class ProductFiltersNotifier extends StateNotifier<ProductFilters> {
     state = state.copyWith(minRating: minRating);
   }
 
-  void resetFilters() {
-    if (state == const ProductFilters()) return;
-    state = const ProductFilters();
-  }
-
   void updateFilters({
     String? category,
     String? subcategory,
@@ -347,6 +361,11 @@ class ProductFiltersNotifier extends StateNotifier<ProductFilters> {
     double? maxPrice,
     double? minRating,
   }) {
+    if (_isUpdating) return;
+    _isUpdating = true;
+    
+    debugPrint("debugging:: updating filters - category: $category, subcategory: $subcategory");
+    
     // Validate price range
     if (minPrice != null && maxPrice != null && minPrice > maxPrice) {
       final temp = minPrice;
@@ -361,6 +380,7 @@ class ProductFiltersNotifier extends StateNotifier<ProductFilters> {
         minPrice == state.minPrice &&
         maxPrice == state.maxPrice &&
         minRating == state.minRating) {
+      _isUpdating = false;
       return;
     }
 
@@ -372,6 +392,7 @@ class ProductFiltersNotifier extends StateNotifier<ProductFilters> {
       maxPrice: maxPrice,
       minRating: minRating,
     );
+    _isUpdating = false;
   }
 }
 
@@ -379,6 +400,7 @@ class ProductsNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
   final Ref _ref;
   final FirestoreService _firestoreService;
   ProductFilters _filters = const ProductFilters();
+  bool _isLoading = false;
 
   ProductsNotifier(this._ref)
       : _firestoreService = _ref.read(firestoreServiceProvider),
@@ -395,17 +417,21 @@ class ProductsNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
   }
 
   Future<void> _loadProducts() async {
+    if (_isLoading) return;
+    _isLoading = true;
+
     try {
       state = const AsyncValue.loading();
       final products = await _applyFilters(_filters);
       
-      if (products.isEmpty) {
+      if (products.isEmpty && (_filters.category != null || _filters.subcategory != null)) {
         // If no products found with current filters, try without subcategory
         if (_filters.subcategory != null) {
           final filtersWithoutSubcategory = _filters.copyWith(clearSubcategory: true);
           final productsWithoutSubcategory = await _applyFilters(filtersWithoutSubcategory);
           if (productsWithoutSubcategory.isNotEmpty) {
             state = AsyncValue.data(productsWithoutSubcategory);
+            _isLoading = false;
             return;
           }
         }
@@ -416,6 +442,7 @@ class ProductsNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
           final productsWithoutCategory = await _applyFilters(filtersWithoutCategory);
           if (productsWithoutCategory.isNotEmpty) {
             state = AsyncValue.data(productsWithoutCategory);
+            _isLoading = false;
             return;
           }
         }
@@ -424,6 +451,8 @@ class ProductsNotifier extends StateNotifier<AsyncValue<List<ProductModel>>> {
       state = AsyncValue.data(products);
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
+    } finally {
+      _isLoading = false;
     }
   }
 

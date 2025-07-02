@@ -1,4 +1,5 @@
 import 'package:amazon_clone/constants/app_constants.dart';
+import 'package:amazon_clone/providers/product_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -56,6 +57,12 @@ class RouterNotifier extends ChangeNotifier {
     final isRegistering = state.matchedLocation == '/register';
     final isPublic = ['/splash', '/login', '/register'].contains(state.matchedLocation);
 
+    // Reset filters when navigating to home
+    if (state.matchedLocation == '/' || state.matchedLocation == '/home') {
+      debugPrint("debugging:: resetting filters on router redirect to home");
+      _ref.read(productFiltersProvider.notifier).resetFilters();
+    }
+
     // Store previous location for redirecting back after login
     if (!isPublic && !isAuthenticated) {
       _previousLocation = state.matchedLocation;
@@ -67,6 +74,21 @@ class RouterNotifier extends ChangeNotifier {
         _previousLocation = state.matchedLocation;
         return '/login';
       }
+      return null;
+    }
+
+    // Handle category routes specially
+    if (state.matchedLocation.startsWith('/category/')) {
+      if (!isAuthenticated) {
+        _previousLocation = state.matchedLocation;
+        return '/login';
+      }
+      return null;
+    }
+
+    // Handle root path
+    if (state.matchedLocation == '/') {
+      if (!isAuthenticated) return '/login';
       return null;
     }
 

@@ -283,7 +283,7 @@ class OrderSuccessScreen extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: () => context.push('/orders'),
+            onPressed: () => context.go('/orders'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFF9900),
               foregroundColor: Colors.black,

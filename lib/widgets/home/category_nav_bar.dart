@@ -56,16 +56,23 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
     if (_isNavigating) return;
     _isNavigating = true;
 
-    // First update the filters
-    ref.read(productFiltersProvider.notifier).updateFilters(
-      category: category,
-      subcategory: null,
-    );
-
-    // Then navigate after a short delay to ensure state is updated
+    final encodedCategory = Uri.encodeComponent(category);
+    
+    // Update filters and navigate in a single microtask
     Future.microtask(() {
-      final encodedCategory = Uri.encodeComponent(category);
-      context.go('/category/$encodedCategory');
+      if (!mounted) {
+        _isNavigating = false;
+        return;
+      }
+
+      // Reset filters and update category in a single update
+      ref.read(productFiltersProvider.notifier).updateFilters(
+        category: category,
+      );
+
+      if (context.mounted) {
+        context.go('/category/$encodedCategory');
+      }
       _isNavigating = false;
     });
   }
@@ -74,19 +81,37 @@ class _CategoryNavBarState extends ConsumerState<CategoryNavBar> {
     if (_isNavigating) return;
     _isNavigating = true;
 
-    // First update the filters
-    ref.read(productFiltersProvider.notifier).updateFilters(
-      category: category,
-      subcategory: subcategory,
-    );
-
-    // Then navigate after a short delay to ensure state is updated
+    final encodedCategory = Uri.encodeComponent(category);
+    final encodedSubcategory = Uri.encodeComponent(subcategory);
+    
+    // Update filters and navigate in a single microtask
     Future.microtask(() {
-      final encodedCategory = Uri.encodeComponent(category);
-      final encodedSubcategory = Uri.encodeComponent(subcategory);
-      context.go('/category/$encodedCategory/subcategory/$encodedSubcategory');
-      _isNavigating = false;
+      if (!mounted) {
+        _isNavigating = false;
+        return;
+      }
+
+      // Reset filters and update category/subcategory in a single update
+      ref.read(productFiltersProvider.notifier).updateFilters(
+        category: category,
+        subcategory: subcategory,
+      );
+
+      if (context.mounted) {
+        _isNavigating = false;
+        context.go('/category/$encodedCategory/subcategory/$encodedSubcategory');
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    // Reset filters when the nav bar is disposed
+    if (mounted) {
+      debugPrint("debugging:: resetting filters on nav bar dispose");
+      ref.read(productFiltersProvider.notifier).resetFilters();
+    }
+    super.dispose();
   }
 
   @override

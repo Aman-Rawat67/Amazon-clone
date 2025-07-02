@@ -36,12 +36,14 @@ class ProductDetailScreen extends ConsumerStatefulWidget {
 
 class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   final FirestoreService _firestoreService = FirestoreService();
-  final PageController _imagePageController = PageController();
+  final _imagePageController = PageController();
+  final _recommendedScrollController = ScrollController();
   int _currentImageIndex = 0;
   String? _selectedColor;
   String? _selectedSize;
   bool _isAddingToCart = false;
   bool _isBuyingNow = false;
+  bool _isHovered = false;
   ProductModel? _cachedProduct;
   bool _addGiftOptions = false;
   int _selectedQuantity = 1;
@@ -130,7 +132,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         } catch (navigationError) {
           print('🔥 Navigation error: $navigationError');
           // Fallback: Go to orders page or home
-          context.go('/home/orders');
+          context.go('/orders');
         }
       }
     } catch (e) {
@@ -445,6 +447,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       _razorpayWebService.cleanup();
     }
     _imagePageController.dispose();
+    _recommendedScrollController.dispose();
     super.dispose();
   }
 
@@ -779,7 +782,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   // Desktop/tablet layout
                   return Padding(
                     padding: EdgeInsets.symmetric(
-                      horizontal: constraints.maxWidth * 0.05,
+                      horizontal: constraints.maxWidth * 0.09,
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1687,17 +1690,120 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
   /// Build recommended products list
   Widget _buildRecommendedProductsList(List<ProductModel> products) {
-    return SizedBox(
-      height: 280,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: products.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final product = products[index];
-          return _buildRecommendedProductCard(product);
-        },
+    return MouseRegion(
+      child: Container(
+        height: 280,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Stack(
+          children: [
+            ListView.separated(
+              controller: _recommendedScrollController,
+              scrollDirection: Axis.horizontal,
+              itemCount: products.length,
+              padding: const EdgeInsets.symmetric(horizontal: 40), // Adjusted for narrower buttons
+              separatorBuilder: (context, index) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final product = products[index];
+                return _buildRecommendedProductCard(product);
+              },
+            ),
+            // Left navigation button
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: _buildNavigationButton(
+                icon: Icons.chevron_left,
+                onPressed: () {
+                  _recommendedScrollController.animateTo(
+                    _recommendedScrollController.offset - 200,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                },
+              ),
+            ),
+            // Right navigation button
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: _buildNavigationButton(
+                icon: Icons.chevron_right,
+                onPressed: () {
+                  _recommendedScrollController.animateTo(
+                    _recommendedScrollController.offset + 200,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildNavigationButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return MouseRegion(
+          onEnter: (_) => setState(() => _isHovered = true),
+          onExit: (_) => setState(() => _isHovered = false),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: _isHovered ? 0.6 : 0.0, // More transparent when visible
+            child: Container(
+              height: 100, // Reduced height
+              width: 40, // Slightly narrower
+              margin: const EdgeInsets.symmetric(vertical: 90), // Center vertically
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.black.withOpacity(0.3), // More transparent gradient
+                    Colors.black.withOpacity(0.2),
+                    Colors.black.withOpacity(0.05),
+                  ],
+                  begin: icon == Icons.chevron_left ? Alignment.centerLeft : Alignment.centerRight,
+                  end: icon == Icons.chevron_left ? Alignment.centerRight : Alignment.centerLeft,
+                ),
+                borderRadius: BorderRadius.circular(4), // Slight rounding
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onPressed,
+                  hoverColor: Colors.black12,
+                  splashColor: Colors.white12, // More subtle splash
+                  highlightColor: Colors.black12,
+                  borderRadius: BorderRadius.circular(4), // Match container radius
+                  child: Center(
+                    child: Container(
+                      width: 32, // Slightly smaller icon container
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1), // More transparent
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        icon,
+                        color: Colors.white.withOpacity(0.9), // Slightly transparent icon
+                        size: 20, // Smaller icon
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

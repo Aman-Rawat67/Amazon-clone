@@ -44,6 +44,16 @@ class _CategoryProductsScreenState extends ConsumerState<CategoryProductsScreen>
   }
 
   @override
+  void dispose() {
+    // Reset filters when the screen is disposed
+    if (mounted) {
+      debugPrint("debugging:: resetting filters on dispose");
+      ref.read(productFiltersProvider.notifier).resetFilters();
+    }
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(CategoryProductsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.category != widget.category || 
@@ -63,15 +73,11 @@ class _CategoryProductsScreenState extends ConsumerState<CategoryProductsScreen>
         ? Uri.decodeComponent(widget.subcategory!)
         : null;
 
-    // Update filters in provider
-    Future.microtask(() {
-      if (!mounted) return;
-      final notifier = ref.read(productFiltersProvider.notifier);
-      notifier.updateCategory(decodedCategory);
-      if (decodedSubcategory != null) {
-        notifier.updateSubcategory(decodedSubcategory);
-      }
-    });
+    // Update filters in a single call
+    ref.read(productFiltersProvider.notifier).updateFilters(
+      category: decodedCategory,
+      subcategory: decodedSubcategory,
+    );
 
     _loadProducts();
   }
@@ -173,111 +179,150 @@ class _CategoryProductsScreenState extends ConsumerState<CategoryProductsScreen>
     // Watch the filters to rebuild when they change
     final filters = ref.watch(productFiltersProvider);
     
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: Column(
-        children: [
-          // Top navigation bar
-          const TopNavBar(),
-          
-          // Breadcrumb navigation
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                InkWell(
-                  onTap: () {
-                    // Navigate to category without subcategory
-                    final encodedCategory = Uri.encodeComponent(decodedCategory);
-                    context.go('/category/$encodedCategory');
-                  },
-                  child: Text(
-                    decodedCategory,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: Colors.blue,
+    return PopScope(
+      onPopInvoked: (didPop) {
+        if (mounted && didPop) {
+          // Update filters and navigate in a single microtask
+          Future.microtask(() {
+            ref.read(productFiltersProvider.notifier).resetFilters();
+            if (mounted) {
+              context.go('/');
+            }
+          });
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        body: Column(
+          children: [
+            // Top navigation bar
+            const TopNavBar(),
+            
+            // Breadcrumb navigation
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  InkWell(
+                    onTap: () {
+                      // Update filters and navigate in a single microtask
+                      Future.microtask(() {
+                        ref.read(productFiltersProvider.notifier).resetFilters();
+                        if (mounted) {
+                          context.go('/');
+                        }
+                      });
+                    },
+                    child: const Text(
+                      'Home',
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
-                ),
-                if (decodedSubcategory != null) ...[
                   const Icon(Icons.chevron_right),
-                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () {
+                      // Update filters and navigate in a single microtask
+                      Future.microtask(() {
+                        ref.read(productFiltersProvider.notifier).updateFilters(
+                          category: decodedCategory,
+                        );
+                        if (mounted) {
+                          final encodedCategory = Uri.encodeComponent(decodedCategory);
+                          context.go('/category/$encodedCategory');
+                        }
+                      });
+                    },
+                    child: Text(
+                      decodedCategory,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ),
+                  if (decodedSubcategory != null) ...[
+                    const Icon(Icons.chevron_right),
+                    const SizedBox(width: 8),
+                    Text(
+                      decodedSubcategory!,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Results count and filters
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
                   Text(
-                    decodedSubcategory!,
-                    style: Theme.of(context).textTheme.titleLarge,
+                    '${products.length} results',
+                    style: TextStyle(
+                      color: Colors.grey[700],
+                      fontSize: 14,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      // Show filter modal
+                      showModalBottomSheet(
+                        context: context,
+                        builder: (context) => const FilterBottomSheet(),
+                      );
+                    },
+                    icon: const Icon(Icons.filter_list),
+                    label: const Text('Filter & Sort'),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
 
-          // Results count and filters
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '${products.length} results',
-                  style: TextStyle(
-                    color: Colors.grey[700],
-                    fontSize: 14,
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () {
-                    // Show filter modal
-                    showModalBottomSheet(
-                      context: context,
-                      builder: (context) => const FilterBottomSheet(),
-                    );
-                  },
-                  icon: const Icon(Icons.filter_list),
-                  label: const Text('Filter & Sort'),
-                ),
-              ],
-            ),
-          ),
-
-          // Main content
-          Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : error != null
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              error!,
-                              style: TextStyle(color: Colors.red[700]),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: _loadProducts,
-                              child: const Text('Try Again'),
-                            ),
-                          ],
-                        ),
-                      )
-                    : products.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No products found',
-                              style: TextStyle(color: Colors.grey[700]),
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.only(top: 8, bottom: 24),
-                            itemCount: products.length,
-                            itemBuilder: (context, index) {
-                              return HorizontalProductCard(
-                                product: products[index],
-                              );
-                            },
+            // Main content
+            Expanded(
+              child: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : error != null
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                error!,
+                                style: TextStyle(color: Colors.red[700]),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton(
+                                onPressed: _loadProducts,
+                                child: const Text('Try Again'),
+                              ),
+                            ],
                           ),
-          ),
-        ],
+                        )
+                      : products.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No products found',
+                                style: TextStyle(color: Colors.grey[700]),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.only(top: 8, bottom: 24),
+                              itemCount: products.length,
+                              itemBuilder: (context, index) {
+                                return HorizontalProductCard(
+                                  product: products[index],
+                                );
+                              },
+                            ),
+            ),
+          ],
+        ),
       ),
     );
   }

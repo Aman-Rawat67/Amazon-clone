@@ -89,9 +89,7 @@ class _HoverDropdownMenuState extends State<HoverDropdownMenu> {
       ),
     );
 
-    if (mounted) {
-      Overlay.of(context).insert(_overlayEntry!);
-    }
+    Overlay.of(context).insert(_overlayEntry!);
   }
 
   void _removeOverlay() {
@@ -161,15 +159,17 @@ class HoverDropdownItem extends StatelessWidget {
           if (ancestor != null) {
             ancestor._isNavigating = true;
             ancestor._removeOverlay();
-          }
-          
-          // Execute the onTap callback after a short delay
-          Future.microtask(() {
+            
+            // Execute the onTap callback after a short delay
+            Future.microtask(() {
+              onTap!();
+              if (ancestor.mounted) {
+                ancestor._isNavigating = false;
+              }
+            });
+          } else {
             onTap!();
-            if (ancestor != null && ancestor.mounted) {
-              ancestor._isNavigating = false;
-            }
-          });
+          }
         }
       },
       child: Container(
