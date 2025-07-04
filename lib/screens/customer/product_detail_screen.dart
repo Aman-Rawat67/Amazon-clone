@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/product_model.dart';
 import '../../models/cart_model.dart';
 import '../../models/order_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../services/order_service.dart';
@@ -84,7 +85,6 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   /// Handle Razorpay payment success
   void _handlePaymentSuccess(PaymentSuccessResponse response) async {
     print('🔥 Payment success: ${response.paymentId}');
-
     try {
       setState(() {
         _isBuyingNow = true;
@@ -109,8 +109,30 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         addedAt: DateTime.now(),
       );
 
-      // Create shipping address
-      final shippingAddress = _orderService.createDefaultAddress();
+      // Fetch user's default shipping address from profile
+      final userData = ref.read(userProvider).value;
+      ShippingAddress? shippingAddress;
+      if (userData != null && userData.addresses.isNotEmpty) {
+        try {
+          final defaultAddressString = userData.addresses.firstWhere(
+            (addr) {
+              final parts = addr.split('|');
+              return parts.length > 8 && parts[8].toLowerCase() == 'true';
+            },
+            orElse: () => userData.addresses.first,
+          );
+          shippingAddress = ShippingAddress.fromString(defaultAddressString);
+        } catch (e) {
+          print('Error finding default address: $e');
+        }
+      }
+      if (shippingAddress == null) {
+        _showErrorSnackBar('No shipping address found. Please add an address in your profile.');
+        setState(() {
+          _isBuyingNow = false;
+        });
+        return;
+      }
 
       // Create order with Razorpay payment details
       final order = await _createOrderWithRazorpayPayment(

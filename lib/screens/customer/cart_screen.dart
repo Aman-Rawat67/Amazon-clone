@@ -81,8 +81,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
   /// Handle Razorpay payment success
   void _handlePaymentSuccess(PaymentSuccessResponse response) async {
-    print('🔥 Payment success: ${response.paymentId}');
-    
+    print('🔥 Payment success:  [33m${response.paymentId} [0m');
     try {
       setState(() {
         _isBuyingNow = true;
@@ -97,14 +96,35 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       if (cartState.hasError) {
         throw Exception('Error reading cart: ${cartState.error}');
       }
-      
       final cart = cartState.value;
       if (cart == null || cart.items.isEmpty) {
         throw Exception('Cart is empty');
       }
 
-      // Create shipping address
-      final shippingAddress = _orderService.createDefaultAddress();
+      // Fetch user's default shipping address from profile
+      final userData = ref.read(userProvider).value;
+      ShippingAddress? shippingAddress;
+      if (userData != null && userData.addresses.isNotEmpty) {
+        try {
+          final defaultAddressString = userData.addresses.firstWhere(
+            (addr) {
+              final parts = addr.split('|');
+              return parts.length > 8 && parts[8].toLowerCase() == 'true';
+            },
+            orElse: () => userData.addresses.first,
+          );
+          shippingAddress = ShippingAddress.fromString(defaultAddressString);
+        } catch (e) {
+          print('Error finding default address: $e');
+        }
+      }
+      if (shippingAddress == null) {
+        _showErrorSnackBar('No shipping address found. Please add an address in your profile.');
+        setState(() {
+          _isBuyingNow = false;
+        });
+        return;
+      }
 
       // Create order with Razorpay payment details
       final order = await _createOrderWithRazorpayPayment(
@@ -122,7 +142,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
       // Navigate to success screen
       _navigateAfterOrder(order);
-      
     } catch (e) {
       print('🔥 Error in payment success handler: $e');
       _showErrorSnackBar('Failed to process order: ${e.toString()}');
