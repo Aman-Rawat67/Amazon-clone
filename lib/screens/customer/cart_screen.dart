@@ -850,180 +850,184 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   Widget _buildCartItem(CartItem item) {
     final cartNotifier = ref.read(cartProvider.notifier);
     
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Product Image
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey[300]!),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  item.product.imageUrls.isNotEmpty 
-                      ? item.product.imageUrls.first 
-                      : 'https://via.placeholder.com/100',
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Container(
+    return InkWell(
+      onTap: () => context.go('/product/${item.productId}'),
+      borderRadius: BorderRadius.circular(12),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Product Image
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    item.product.imageUrls.isNotEmpty 
+                        ? item.product.imageUrls.first 
+                        : 'https://via.placeholder.com/100',
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        color: Colors.grey[200],
+                        child: const Icon(Icons.image, size: 40, color: Colors.grey),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) => Container(
                       color: Colors.grey[200],
                       child: const Icon(Icons.image, size: 40, color: Colors.grey),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    color: Colors.grey[200],
-                    child: const Icon(Icons.image, size: 40, color: Colors.grey),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            
-            // Product Details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: 16),
+              
+              // Product Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Product Name
+                    Text(
+                      item.product.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF0F1111),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    
+                    // In Stock Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'In stock',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.green,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    
+                    // Selected attributes
+                    if (item.selectedColor != null)
+                      Text(
+                        'Color: ${item.selectedColor}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF565959),
+                        ),
+                      ),
+                    if (item.selectedSize != null)
+                      Text(
+                        'Size: ${item.selectedSize}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF565959),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    
+                    // Actions Row
+                    Row(
+                      children: [
+                        // Quantity Selector
+                        _buildQuantitySelector(item, cartNotifier),
+                        const SizedBox(width: 16),
+                        
+                        // Remove Button
+                        TextButton.icon(
+                          onPressed: () => _showRemoveDialog(item, cartNotifier),
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: const Text('Remove'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFCC0C39),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Price Section
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Product Name
+                  if (item.product.hasDiscount)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCC0C39),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${item.product.discountPercentage.toInt()}% off',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  
+                  // Current Price
                   Text(
-                    item.product.name,
+                    '₹${_formatPrice(item.product.price)}',
                     style: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F1111),
+                    ),
+                  ),
+                  
+                  // Original Price (if discounted)
+                  if (item.product.hasDiscount)
+                    Text(
+                      'M.R.P: ₹${_formatPrice(item.product.originalPrice!)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF565959),
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  
+                  const SizedBox(height: 8),
+                  
+                  // Item Total
+                  Text(
+                    'Total: ₹${_formatPrice(item.totalPrice)}',
+                    style: const TextStyle(
+                      fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: Color(0xFF0F1111),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  
-                  // In Stock Badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'In stock',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.green,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  
-                  // Selected attributes
-                  if (item.selectedColor != null)
-                    Text(
-                      'Color: ${item.selectedColor}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF565959),
-                      ),
-                    ),
-                  if (item.selectedSize != null)
-                    Text(
-                      'Size: ${item.selectedSize}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF565959),
-                      ),
-                    ),
-                  const SizedBox(height: 12),
-                  
-                  // Actions Row
-                  Row(
-                    children: [
-                      // Quantity Selector
-                      _buildQuantitySelector(item, cartNotifier),
-                      const SizedBox(width: 16),
-                      
-                      // Remove Button
-                      TextButton.icon(
-                        onPressed: () => _showRemoveDialog(item, cartNotifier),
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        label: const Text('Remove'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFFCC0C39),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
-            ),
-            
-            // Price Section
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (item.product.hasDiscount)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCC0C39),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '${item.product.discountPercentage.toInt()}% off',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 4),
-                
-                // Current Price
-                Text(
-                  '₹${_formatPrice(item.product.price)}',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F1111),
-                  ),
-                ),
-                
-                // Original Price (if discounted)
-                if (item.product.hasDiscount)
-                  Text(
-                    'M.R.P: ₹${_formatPrice(item.product.originalPrice!)}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF565959),
-                      decoration: TextDecoration.lineThrough,
-                    ),
-                  ),
-                
-                const SizedBox(height: 8),
-                
-                // Item Total
-                Text(
-                  'Total: ₹${_formatPrice(item.totalPrice)}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF0F1111),
-                  ),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

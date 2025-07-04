@@ -12,6 +12,11 @@ class QuantitySelector extends StatefulWidget {
   // Global state for quantity to avoid rebuilding entire screen
   static int globalQuantity = 1;
 
+  /// Call this to reset the global quantity to 1
+  static void reset() {
+    globalQuantity = 1;
+  }
+
   @override
   State<QuantitySelector> createState() => _QuantitySelectorState();
 }

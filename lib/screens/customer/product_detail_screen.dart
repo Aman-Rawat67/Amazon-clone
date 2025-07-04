@@ -435,17 +435,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
   @override
   void dispose() {
-    // Clear Razorpay instances
-    if (!kIsWeb && _razorpay != null) {
-      try {
-        _razorpay!.clear();
-      } catch (e) {
-        print('🔥 Error clearing Razorpay: $e');
-      }
-    }
-    if (kIsWeb) {
-      _razorpayWebService.cleanup();
-    }
+    QuantitySelector.reset();
+    _selectedQuantity = 1;
+    _razorpay?.clear();
     _imagePageController.dispose();
     _recommendedScrollController.dispose();
     super.dispose();
@@ -2548,11 +2540,71 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
   /// Build quantity selection
   Widget _buildQuantitySelection() {
-    return QuantitySelector(
-      onQuantityChanged: (quantity) {
-        // Quantity changes are handled internally by QuantitySelector
-        // This callback could be used for other purposes if needed
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Quantity:',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade300),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _selectedQuantity,
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 24),
+              style: const TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w500,
+                fontSize: 15,
+              ),
+              items: List.generate(10, (index) => index + 1)
+                  .map(
+                    (qty) => DropdownMenuItem(
+                      value: qty,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Text(
+                          qty == 1 ? '1 item' : '$qty items',
+                          style: TextStyle(
+                            color: _selectedQuantity == qty ? Colors.blue : Colors.black87,
+                            fontWeight: _selectedQuantity == qty ? FontWeight.bold : FontWeight.w500,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  _updateQuantity(value);
+                }
+              },
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -2957,6 +3009,16 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       _showErrorSnackBar('Failed to process payment: ${e.toString()}');
       setState(() {
         _isBuyingNow = false;
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ProductDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.productId != widget.productId) {
+      setState(() {
+        _selectedQuantity = 1;
       });
     }
   }

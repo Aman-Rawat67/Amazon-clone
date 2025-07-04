@@ -30,7 +30,7 @@ class CartNotifier extends AsyncNotifier<CartModel?> {
     }
   }
 
-  /// Add item to cart
+  /// Add item to cart (merges quantity if identical item exists)
   Future<void> addToCart({
     required ProductModel product,
     required int quantity,
@@ -42,31 +42,40 @@ class CartNotifier extends AsyncNotifier<CartModel?> {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final cart = await _firestoreService.streamCart(_userId!).first;
-      
-      // Create a unique ID for the cart item based on product and selections
       final itemId = _createCartItemId(product.id, selectedColor, selectedSize);
-      
-      final cartItem = CartItem(
-        id: itemId,
-        productId: product.id,
-        product: product,
-        quantity: quantity,
-        selectedColor: selectedColor,
-        selectedSize: selectedSize,
-        addedAt: DateTime.now(),
-      );
 
+      // Check if item already exists (by id)
+      final existingIndex = cart?.items.indexWhere((item) => item.id == itemId) ?? -1;
+      List<CartItem> updatedItems = cart?.items != null ? List.from(cart!.items) : [];
+      if (existingIndex != -1) {
+        // Increase quantity
+        final existingItem = updatedItems[existingIndex];
+        updatedItems[existingIndex] = existingItem.copyWith(
+          quantity: existingItem.quantity + quantity,
+          addedAt: DateTime.now(),
+        );
+      } else {
+        // Add new item
+        updatedItems.add(CartItem(
+          id: itemId,
+          productId: product.id,
+          product: product,
+          quantity: quantity,
+          selectedColor: selectedColor,
+          selectedSize: selectedSize,
+          addedAt: DateTime.now(),
+        ));
+      }
       final updatedCart = cart?.copyWith(
-        items: [...(cart.items), cartItem],
+        items: updatedItems,
         updatedAt: DateTime.now(),
       ) ?? CartModel(
         id: _uuid.v4(),
         userId: _userId!,
-        items: [cartItem],
+        items: updatedItems,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
-      
       await _firestoreService.updateCart(updatedCart);
       return updatedCart;
     });
@@ -79,8 +88,8 @@ class CartNotifier extends AsyncNotifier<CartModel?> {
     return '${productId}_${colorKey}_${sizeKey}';
   }
 
-  /// Remove item from cart
-  Future<void> removeFromCart(String productId) async {
+  /// Remove item from cart by itemId (not productId)
+  Future<void> removeFromCart(String itemId) async {
     if (_userId == null) return;
 
     state = const AsyncValue.loading();
@@ -88,14 +97,14 @@ class CartNotifier extends AsyncNotifier<CartModel?> {
       final cart = await _firestoreService.streamCart(_userId!).first;
       if (cart == null) return null;
 
-      final updatedCart = cart.removeItem(productId);
+      final updatedCart = cart.removeItem(itemId);
       await _firestoreService.updateCart(updatedCart);
       return updatedCart;
     });
   }
 
-  /// Update item quantity in cart
-  Future<void> updateQuantity(String productId, int quantity) async {
+  /// Update item quantity in cart by itemId (not productId)
+  Future<void> updateQuantity(String itemId, int quantity) async {
     if (_userId == null) return;
 
     state = const AsyncValue.loading();
@@ -103,7 +112,7 @@ class CartNotifier extends AsyncNotifier<CartModel?> {
       final cart = await _firestoreService.streamCart(_userId!).first;
       if (cart == null) return null;
 
-      final updatedCart = cart.updateQuantity(productId, quantity);
+      final updatedCart = cart.updateQuantity(itemId, quantity);
       await _firestoreService.updateCart(updatedCart);
       return updatedCart;
     });

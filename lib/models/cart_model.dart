@@ -270,22 +270,22 @@ class CartModel {
   }
 
   /// Remove an item from cart
-  CartModel removeItem(String productId) {
+  CartModel removeItem(String itemId) {
     return copyWith(
-      items: items.where((item) => item.productId != productId).toList(),
+      items: items.where((item) => item.id != itemId).toList(),
       updatedAt: DateTime.now()
     );
   }
 
   /// Update quantity of an item
-  CartModel updateQuantity(String productId, int quantity) {
+  CartModel updateQuantity(String itemId, int quantity) {
     if (quantity <= 0) {
-      return removeItem(productId);
+      return removeItem(itemId);
     }
 
     return copyWith(
       items: items.map((item) {
-        if (item.productId == productId) {
+        if (item.id == itemId) {
           return item.copyWith(quantity: quantity);
         }
         return item;
